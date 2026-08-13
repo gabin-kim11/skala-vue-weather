@@ -29,24 +29,25 @@ const favoriteCities = computed(() =>
     .filter(Boolean),
 )
 
-// 일러스트 속 한반도 외곽에 맞춘 수동 좌표입니다. 위·경도 비례식보다 원본 지도에 정확히 붙습니다.
+// 한반도 전체가 그려진 원본 이미지에서 남한 영역에 맞춘 수동 좌표입니다.
+// 지도 일러스트의 왜곡과 해안선 여백 때문에 실제 위·경도를 그대로 비례 변환하지 않습니다.
 const markerPositions = {
-  seoul: { x: 44, y: 24 },
-  incheon: { x: 38, y: 25 },
-  suwon: { x: 45, y: 31 },
-  chuncheon: { x: 53, y: 21 },
-  sejong: { x: 42, y: 40 },
-  daejeon: { x: 47, y: 45 },
-  cheongju: { x: 50, y: 37 },
-  hongseong: { x: 36, y: 42 },
-  jeonju: { x: 42, y: 55 },
-  gwangju: { x: 37, y: 66 },
-  muan: { x: 30, y: 68 },
-  daegu: { x: 62, y: 50 },
-  andong: { x: 63, y: 39 },
-  changwon: { x: 61, y: 66 },
-  busan: { x: 69, y: 70 },
-  ulsan: { x: 72, y: 59 },
+  seoul: { x: 44, y: 49 },
+  incheon: { x: 38, y: 50 },
+  suwon: { x: 45, y: 53 },
+  chuncheon: { x: 53, y: 47 },
+  sejong: { x: 44, y: 59 },
+  daejeon: { x: 47, y: 62 },
+  cheongju: { x: 50, y: 58 },
+  hongseong: { x: 38, y: 60 },
+  jeonju: { x: 42, y: 68 },
+  gwangju: { x: 37, y: 74 },
+  muan: { x: 31, y: 75 },
+  daegu: { x: 62, y: 67 },
+  andong: { x: 63, y: 59 },
+  changwon: { x: 61, y: 74 },
+  busan: { x: 69, y: 76 },
+  ulsan: { x: 72, y: 69 },
   jeju: { x: 36, y: 92 },
 }
 
