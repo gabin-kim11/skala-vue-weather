@@ -7,7 +7,7 @@ import { useWeatherStore } from '../../stores/weatherStore'
 
 const route = useRoute()
 const weatherStore = useWeatherStore()
-const { currentLocationName, isLoading, temperatureUnit } = storeToRefs(weatherStore)
+const { isLoading, selectedCityInfo, temperatureUnit } = storeToRefs(weatherStore)
 const { refreshWeather, toggleUnit } = weatherStore
 const isMenuOpen = ref(false)
 
@@ -43,7 +43,7 @@ watch(() => route.fullPath, () => { isMenuOpen.value = false })
         >
           <span aria-hidden="true">↻</span><span class="refresh-label">{{ isLoading ? '갱신 중' : '새로고침' }}</span>
         </button>
-        <RouterLink class="city-control" to="/map"><span aria-hidden="true">⌖</span><b>{{ currentLocationName }}</b></RouterLink>
+        <RouterLink class="city-control" to="/map"><span aria-hidden="true">⌖</span><b>{{ selectedCityInfo.name }}</b></RouterLink>
         <button class="unit-control" type="button" aria-label="온도 단위 변경" @click="toggleUnit">{{ temperatureUnit === 'celsius' ? '°C' : '°F' }}</button>
         <button
           class="menu-control"

@@ -28,7 +28,6 @@ export const useWeatherApplication = () => {
     hydratePreferences,
     initializeLocationWeather,
     refreshWeather,
-    restoreCurrentLocation,
     selectCity,
     toggleFavorite,
     toggleUnit,
@@ -79,7 +78,8 @@ export const useWeatherApplication = () => {
   const initialize = () => {
     hydratePreferences()
     if (!lastUpdatedAt.value) initializeLocationWeather()
-    else restoreCurrentLocation()
+    // 지도·도시 목록에서 고른 지역은 홈으로 돌아와도 유지한다.
+    // GPS 위치로 전환하는 동작은 사용자가 현재 위치 버튼을 눌렀을 때만 실행한다.
   }
 
   const useCurrentLocation = () => initializeLocationWeather(true)
