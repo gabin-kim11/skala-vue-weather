@@ -11,8 +11,8 @@ import { useWeatherStore } from '../stores/weatherStore'
 
 const router = useRouter()
 const weatherStore = useWeatherStore()
-const { favoriteCityIds, isLoading, lastUpdatedAt, selectedCityInfo, weatherList } = storeToRefs(weatherStore)
-const { formatTemperature, initializeLocationWeather, selectCity, toggleFavorite } = weatherStore
+const { favoriteCityIds, isNationwideLoading, selectedCityInfo, weatherList } = storeToRefs(weatherStore)
+const { formatTemperature, hydratePreferences, loadNationwideWeather, selectCity, toggleFavorite } = weatherStore
 
 const filters = reactive({
   query: '',
@@ -48,7 +48,8 @@ const openCity = (city) => {
 }
 
 onMounted(() => {
-  if (!lastUpdatedAt.value || weatherList.value.length < 17) initializeLocationWeather()
+  hydratePreferences()
+  void loadNationwideWeather()
 })
 </script>
 
@@ -97,7 +98,7 @@ onMounted(() => {
       </div>
     </section>
 
-    <p v-if="isLoading" class="loading-note">전국의 하늘을 읽는 중…</p>
+    <p v-if="isNationwideLoading" class="loading-note">전국의 실시간 하늘을 차례로 읽는 중…</p>
   </main>
 </template>
 

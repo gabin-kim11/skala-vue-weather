@@ -10,7 +10,7 @@ const weatherStore = useWeatherStore()
 const router = useRouter()
 const { favoriteCityIds, isLoading, lastUpdatedAt, locationMessage, selectedCityInfo, weatherDataSource, weatherList } =
   storeToRefs(weatherStore)
-const { formatTemperature, initializeLocationWeather, selectCity, toggleFavorite } = weatherStore
+const { formatTemperature, hydratePreferences, initializeLocationWeather, refreshWeather, selectCity, toggleFavorite } = weatherStore
 
 const query = ref('')
 const isZooming = ref(false)
@@ -102,8 +102,12 @@ const chooseCity = async (city) => {
   }, 1150)
 }
 
-onMounted(() => {
-  if (!lastUpdatedAt.value || weatherList.value.length < 17) initializeLocationWeather()
+onMounted(async () => {
+  hydratePreferences()
+  if (!lastUpdatedAt.value) {
+    const initializedFromLocation = await initializeLocationWeather()
+    if (!initializedFromLocation) await refreshWeather()
+  }
 })
 
 onBeforeUnmount(() => window.clearTimeout(zoomTimer))
@@ -120,7 +124,7 @@ onBeforeUnmount(() => window.clearTimeout(zoomTimer))
         <div class="panel-title">
           <p>REGION FINDER</p>
           <h1>어느 지역의<br />하늘을 볼까요?</h1>
-          <span>{{ locationMessage }} · {{ weatherDataSource === 'kma' ? '기상청 실황' : '실시간 예보' }}</span>
+          <span>{{ locationMessage }} · {{ weatherDataSource === 'kma' ? '기상청 실황' : weatherDataSource === 'open-meteo' ? '실시간 예보' : '준비된 날씨' }}</span>
         </div>
 
         <button

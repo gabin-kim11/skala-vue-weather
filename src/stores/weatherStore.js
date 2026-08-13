@@ -8,10 +8,13 @@ import { describeWeatherCode } from '../components/weather/utils/weatherCode'
 
 const API_URL = 'https://api.open-meteo.com/v1/forecast'
 const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
-const OPEN_METEO_ENABLED = import.meta.env.VITE_OPEN_METEO_ENABLED === 'true'
+// 별도 설정이 없어도 선택한 도시의 실시간 예보를 사용한다.
+// 호출을 끄고 준비된 데이터만 확인하려는 경우에만 false로 설정한다.
+const OPEN_METEO_ENABLED = import.meta.env.VITE_OPEN_METEO_ENABLED !== 'false'
 const WEATHER_CACHE_TTL = 10 * 60 * 1000
 const MIN_FORECAST_REQUEST_INTERVAL = 350
 const MAX_RATE_LIMIT_RETRIES = 2
+const NATIONWIDE_BATCH_SIZE = 4
 
 const forecastCache = new Map()
 const forecastRequests = new Map()
@@ -213,14 +216,17 @@ export const useWeatherStore = defineStore('weather', () => {
   const temperatureUnit = ref('celsius')
   const favoriteCityIds = ref([])
   const isLoading = ref(false)
+  const isNationwideLoading = ref(false)
   const errorMessage = ref('')
   const lastUpdatedAt = ref(null)
+  const nationwideUpdatedAt = ref(null)
   const isHydrated = ref(false)
   const locationStatus = ref('idle')
   const locationMessage = ref('위치 확인 전')
   const weatherDataSource = ref('mock')
   const currentLocationCity = ref(null)
   let activeLocationRequest = 0
+  let activeSelectedWeatherRequest = 0
 
   const selectedCityInfo = computed(
     () => weatherList.value.find((city) => city.id === selectedCityId.value) ?? weatherList.value[0],
@@ -252,7 +258,8 @@ export const useWeatherStore = defineStore('weather', () => {
       const nextCity = weatherList.value.find((city) => city.id === nextId)
       if (nextCity) locationMessage.value = `선택한 도시 · ${nextCity.name}`
     }
-    if (lastUpdatedAt.value) refreshSelectedCity()
+    // 지도·도시 목록에서 고른 지역 한 곳만 즉시 실시간으로 갱신한다.
+    void refreshSelectedCity()
   }
 
   const restoreCurrentLocation = () => {
@@ -276,7 +283,7 @@ export const useWeatherStore = defineStore('weather', () => {
   }
 
   const fetchCityWeather = async (city, { includeAirQuality = true } = {}) => {
-    // 공유 API의 일일 한도(429)를 피하기 위해 명시적으로 활성화한 환경에서만 호출한다.
+    // 필요할 때만 호출하며, 명시적으로 비활성화한 환경에서는 준비된 데이터로 전환한다.
     if (!OPEN_METEO_ENABLED) return createMockCity(city)
 
     // 가장 중요한 날씨 응답을 부가 정보보다 먼저 기다린다.
@@ -358,7 +365,6 @@ export const useWeatherStore = defineStore('weather', () => {
     try {
       const observation = await fetchKmaCurrentWeather(weather)
       const condition = observation.condition
-      weatherDataSource.value = 'kma'
       return {
         ...weather,
         current: {
@@ -383,15 +389,14 @@ export const useWeatherStore = defineStore('weather', () => {
         source: 'kma',
       }
     } catch (error) {
-      weatherDataSource.value = 'open-meteo'
       if (error.message !== 'KMA_SERVICE_KEY_MISSING') console.warn('[KMA API]', error)
       return weather
     }
   }
 
   const refreshSelectedCity = async () => {
-    if (isLoading.value) return
     const city = selectedCityInfo.value
+    const requestId = ++activeSelectedWeatherRequest
     isLoading.value = true
     errorMessage.value = ''
     try {
@@ -400,17 +405,59 @@ export const useWeatherStore = defineStore('weather', () => {
       if (existingIndex >= 0) weatherList.value.splice(existingIndex, 1, weather)
       else weatherList.value.unshift(weather)
       lastUpdatedAt.value = new Date()
+      if (selectedCityId.value === city.id) weatherDataSource.value = weather.source ?? 'mock'
     } catch (error) {
       console.error('[Weather API]', error)
-      weatherDataSource.value = 'mock'
-      errorMessage.value = ''
+      if (selectedCityId.value === city.id) {
+        weatherDataSource.value = 'mock'
+        errorMessage.value = '실시간 연결에 실패해 준비된 날씨를 표시합니다.'
+      }
     } finally {
-      isLoading.value = false
+      if (requestId === activeSelectedWeatherRequest) isLoading.value = false
+    }
+  }
+
+  const loadNationwideWeather = async ({ force = false } = {}) => {
+    if (isNationwideLoading.value) return
+    if (
+      !force &&
+      nationwideUpdatedAt.value &&
+      Date.now() - new Date(nationwideUpdatedAt.value).getTime() < WEATHER_CACHE_TTL
+    ) return
+
+    isNationwideLoading.value = true
+    try {
+      // 전국 도시 화면을 열었을 때만 작은 묶음으로 순차 요청한다.
+      for (let index = 0; index < cityCatalog.length; index += NATIONWIDE_BATCH_SIZE) {
+        const chunk = cityCatalog.slice(index, index + NATIONWIDE_BATCH_SIZE)
+        const chunkWeather = await Promise.all(
+          chunk.map(async (city) => {
+            try {
+              return await fetchCityWeather(city, { includeAirQuality: false })
+            } catch (error) {
+              console.warn(`[${city.name} Weather]`, error)
+              return createMockCity(city)
+            }
+          }),
+        )
+
+        chunkWeather.forEach((weather) => {
+          const existingIndex = weatherList.value.findIndex((item) => item.id === weather.id)
+          const existingWeather = weatherList.value[existingIndex]
+          if (weather.id === selectedCityId.value && existingWeather?.source !== 'mock') return
+          if (existingIndex >= 0) weatherList.value.splice(existingIndex, 1, weather)
+          else weatherList.value.push(weather)
+        })
+      }
+      nationwideUpdatedAt.value = new Date()
+      lastUpdatedAt.value = new Date()
+    } finally {
+      isNationwideLoading.value = false
     }
   }
 
   const initializeLocationWeather = async (userInitiated = false) => {
-    if (locationStatus.value === 'locating') return
+    if (locationStatus.value === 'locating') return false
     const requestId = ++activeLocationRequest
     locationStatus.value = 'locating'
     locationMessage.value = '현재 위치 확인 중'
@@ -418,9 +465,12 @@ export const useWeatherStore = defineStore('weather', () => {
     const permissionState = await getGeolocationPermissionState()
     // 허용 상태만 자동 실행한다. 미결정·차단 상태는 반드시 사용자의 클릭에서 요청한다.
     if (!userInitiated && permissionState !== 'granted') {
-      locationStatus.value = 'needs-permission'
-      locationMessage.value = permissionState === 'denied' ? 'GPS 권한 다시 허용 필요' : 'GPS 위치 허용 필요'
-      return
+      // 위치 권한은 선택 사항이다. 권한이 없어도 저장된 선택 도시의 실시간 날씨로 바로 시작한다.
+      locationStatus.value = 'fallback'
+      locationMessage.value = permissionState === 'denied'
+        ? `GPS 권한 없음 · 선택한 도시 ${selectedCityInfo.value.name}`
+        : `선택한 도시 · ${selectedCityInfo.value.name}`
+      return false
     }
 
     let targetCity = cityCatalog[0]
@@ -478,6 +528,7 @@ export const useWeatherStore = defineStore('weather', () => {
     let primaryWeather
     try {
       primaryWeather = await fetchCityWeather(targetCity, { includeAirQuality: false })
+      weatherDataSource.value = primaryWeather.source ?? 'mock'
     } catch (error) {
       console.warn('[Primary Location Weather]', error)
       primaryWeather = createMockCity(targetCity)
@@ -517,46 +568,13 @@ export const useWeatherStore = defineStore('weather', () => {
           const seoulIndex = weatherList.value.findIndex((city) => city.id === targetCity.id)
           if (seoulIndex >= 0) weatherList.value.splice(seoulIndex, 1, enrichedWeather)
         }
+        if (selectedCityId.value === targetCity.id) weatherDataSource.value = enrichedWeather.source ?? 'mock'
         lastUpdatedAt.value = new Date()
       } catch (error) {
         console.warn('[Location Weather Enrichment]', error)
       }
     })()
-
-    // 전국 목록도 현재 위치 표시와 별개로 백그라운드에서 채운다.
-    void (async () => {
-      try {
-      const nationwideWeather = []
-      // 전국 요청을 한꺼번에 보내면 공공 API의 순간 호출 제한에 걸릴 수 있어 작은 묶음으로 처리한다.
-      for (let index = 0; index < cityCatalog.length; index += 4) {
-        const chunk = cityCatalog.slice(index, index + 4)
-        const chunkWeather = await Promise.all(
-          chunk.map(async (city) => {
-            try {
-              return await fetchCityWeather(city, { includeAirQuality: false })
-            } catch (error) {
-              console.warn(`[${city.name} Weather]`, error)
-              return createMockCity(city)
-            }
-          }),
-        )
-        nationwideWeather.push(...chunkWeather)
-      }
-
-      if (hasGpsPermission) {
-        if (requestId !== activeLocationRequest) return
-        const latestLocationWeather = weatherList.value.find((city) => city.id === targetCity.id) ?? primaryWeather
-        weatherList.value = [latestLocationWeather, ...nationwideWeather]
-      } else {
-        if (requestId !== activeLocationRequest) return
-        weatherList.value = nationwideWeather
-      }
-      lastUpdatedAt.value = new Date()
-      } catch (error) {
-        console.error('[Nationwide Weather]', error)
-        errorMessage.value ||= '전국 날씨 일부를 불러오지 못했지만 현재 위치 날씨는 사용할 수 있습니다.'
-      }
-    })()
+    return true
   }
 
   const refreshWeather = async () => {
@@ -582,7 +600,9 @@ export const useWeatherStore = defineStore('weather', () => {
     hydratePreferences,
     initializeLocationWeather,
     isLoading,
+    isNationwideLoading,
     lastUpdatedAt,
+    loadNationwideWeather,
     locationMessage,
     locationStatus,
     currentLocationName,
@@ -597,5 +617,6 @@ export const useWeatherStore = defineStore('weather', () => {
     unitLabel,
     weatherDataSource,
     weatherList,
+    nationwideUpdatedAt,
   }
 })

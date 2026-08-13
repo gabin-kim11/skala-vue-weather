@@ -75,9 +75,13 @@ export const useWeatherApplication = () => {
     console.log(`[watchEffect] 검색어 '${searchQuery.value}', 결과 ${filteredWeatherList.value.length}개`)
   })
 
-  const initialize = () => {
+  const initialize = async () => {
     hydratePreferences()
-    if (!lastUpdatedAt.value) initializeLocationWeather()
+    if (!lastUpdatedAt.value) {
+      const initializedFromLocation = await initializeLocationWeather()
+      // GPS 권한이 아직 없더라도 저장된 선택 도시는 실시간으로 갱신한다.
+      if (!initializedFromLocation) await refreshWeather()
+    }
     // 지도·도시 목록에서 고른 지역은 홈으로 돌아와도 유지한다.
     // GPS 위치로 전환하는 동작은 사용자가 현재 위치 버튼을 눌렀을 때만 실행한다.
   }
@@ -89,7 +93,7 @@ export const useWeatherApplication = () => {
   }
 
   onMounted(() => {
-    initialize()
+    void initialize()
     window.addEventListener('focus', retryLocationAfterPermissionChange)
   })
   onBeforeUnmount(() => window.removeEventListener('focus', retryLocationAfterPermissionChange))

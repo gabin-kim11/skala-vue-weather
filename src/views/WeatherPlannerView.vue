@@ -7,8 +7,8 @@ import { describeWeatherCode } from '../components/weather/utils/weatherCode'
 import { useWeatherStore } from '../stores/weatherStore'
 
 const weatherStore = useWeatherStore()
-const { favoriteCityIds, selectedCityInfo, weatherList } = storeToRefs(weatherStore)
-const { formatTemperature, hydratePreferences, selectCity, toggleFavorite } = weatherStore
+const { favoriteCityIds, lastUpdatedAt, selectedCityInfo, weatherList } = storeToRefs(weatherStore)
+const { formatTemperature, hydratePreferences, refreshWeather, selectCity, toggleFavorite } = weatherStore
 
 const activities = [
   { id: 'walk', label: '가볍게 걷기', ideal: 20 },
@@ -193,6 +193,7 @@ watch(() => selectedCityInfo.value.id, (id) => {
 
 onMounted(() => {
   hydratePreferences()
+  if (!lastUpdatedAt.value || selectedCityInfo.value.source === 'mock') void refreshWeather()
   try {
     const saved = JSON.parse(window.localStorage.getItem('skala-weather-compare') ?? '[]')
     compareCityIds.value = Array.isArray(saved) ? saved.filter((id) => catalogWeather.value.some((city) => city.id === id)).slice(0, 4) : []

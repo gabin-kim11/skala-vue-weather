@@ -7,9 +7,13 @@ import { useWeatherStore } from '../stores/weatherStore'
 
 const weatherStore = useWeatherStore()
 const { lastUpdatedAt, locationMessage, selectedCityInfo, weatherDataSource } = storeToRefs(weatherStore)
-const { formatTemperature, hydratePreferences, initializeLocationWeather } = weatherStore
+const { formatTemperature, hydratePreferences, initializeLocationWeather, refreshWeather } = weatherStore
 
-const dataSourceLabel = computed(() => (weatherDataSource.value === 'kma' ? '기상청 실황' : '실시간 예보'))
+const dataSourceLabel = computed(() => {
+  if (weatherDataSource.value === 'kma') return '기상청 실황'
+  if (weatherDataSource.value === 'open-meteo') return '실시간 예보'
+  return '준비된 날씨'
+})
 const detailCityId = computed(() => selectedCityInfo.value.guideId ?? selectedCityInfo.value.id)
 
 const features = [
@@ -46,9 +50,12 @@ const journey = [
   ['04', '오늘 계획하기', '일정, 위험기상, 준비물과 생활지수를 한 번에 확인해요.'],
 ]
 
-onMounted(() => {
+onMounted(async () => {
   hydratePreferences()
-  if (!lastUpdatedAt.value) initializeLocationWeather()
+  if (!lastUpdatedAt.value) {
+    const initializedFromLocation = await initializeLocationWeather()
+    if (!initializedFromLocation) await refreshWeather()
+  }
 })
 </script>
 
