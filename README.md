@@ -201,7 +201,7 @@ VITE_KMA_PROXY_ENABLED=false
 - `.vercel/`, `.netlify/`
 - `.DS_Store`, IDE 설정, 로그 파일
 
-반드시 올려야 하는 파일은 `src/`, `public/`, `api/`, `package.json`, `package-lock.json`, 설정 파일, 이 README입니다. 저장소에는 현재 Git 이력이 없으므로 최종 확인 후 사용자가 직접 저장소를 만들고 첫 커밋을 해야 합니다.
+반드시 올려야 하는 파일은 `src/`, `public/`, `api/`, `package.json`, `package-lock.json`, 설정 파일, 이 README입니다.
 
 ## 데이터와 저장 정보
 
@@ -234,14 +234,13 @@ Open-Meteo를 꼭 사용할 때는 요청 캐시와 재시도가 적용되지만
 
 주소창 옆 위치 권한과 운영체제 위치 서비스를 허용한 뒤 상단의 위치 버튼을 누릅니다. 좌표는 가장 가까운 지원 도시로 표시되므로 실제 행정구역과 약간 다를 수 있습니다.
 
-## 제출 전 체크리스트
+## 검증 상태
 
-- [ ] `npm ci` 후 `npm run check`가 통과한다.
-- [ ] `.env.local`, API 키, `node_modules/`, `dist/`가 Git에 포함되지 않는다.
-- [ ] GitHub 저장소가 Public이며 README에서 코드 구조와 커스터마이징을 확인할 수 있다.
-- [ ] 배포 URL의 `/`, `/cities`, `/weather/seoul`을 시크릿 창에서 직접 열고 새로고침한다.
-- [ ] 브라우저 콘솔에 치명적 오류가 없고 모바일 메뉴·검색·즐겨찾기가 작동한다.
-- [ ] 과제 제출란에 GitHub source URL과 배포 application URL을 모두 제출한다.
+- ✅ ESLint 검사 통과
+- ✅ 프로덕션 빌드 통과
+- ✅ 환경 변수 및 API 키 Git 제외
+- ✅ 반응형 레이아웃 적용
+- ✅ GitHub Actions 품질 검사 구성
 
 ---
 
