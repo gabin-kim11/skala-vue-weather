@@ -1,10 +1,16 @@
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+
 import WeatherSiteHeader from './components/weather/WeatherSiteHeader.vue'
+
+const route = useRoute()
+const showSiteHeader = computed(() => !route.meta.hideHeader)
 </script>
 
 <template>
   <div class="app-shell">
-    <WeatherSiteHeader />
+    <WeatherSiteHeader v-if="showSiteHeader" />
     <div class="app-route">
       <RouterView v-slot="{ Component, route }">
         <Transition name="page-fade" mode="out-in">

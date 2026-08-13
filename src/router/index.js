@@ -59,6 +59,7 @@ const router = createRouter({
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('../views/NotFoundView.vue'),
+      meta: { hideHeader: true },
     },
   ],
   scrollBehavior(to, from, savedPosition) {

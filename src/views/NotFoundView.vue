@@ -43,7 +43,7 @@ const requestedPath = computed(() => {
 <style scoped>
 .not-found-page {
   display: grid;
-  min-height: calc(100vh - 76px);
+  min-height: 100vh;
   padding: var(--layout-gutter);
   place-items: center;
   color: #fff;
@@ -189,7 +189,7 @@ nav a:last-child {
 }
 
 @media (max-width: 700px) {
-  .not-found-page { min-height: calc(100vh - 68px); padding: 14px; }
+  .not-found-page { min-height: 100vh; padding: 14px; }
   .not-found-card { min-height: 0; padding: 34px 22px 22px; border-radius: 24px; }
   h1 { font-size: 42px; }
   .error-description br { display: none; }
