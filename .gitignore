@@ -11,3 +11,4 @@ dist
 .netlify
 coverage
 *.local
+/U039_*
