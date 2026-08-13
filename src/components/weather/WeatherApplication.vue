@@ -24,7 +24,7 @@ const activities = [
 ]
 const activeActivityId = ref('walk')
 const showWindowOpening = ref(true)
-const isOpeningReady = computed(() => ['granted', 'fallback'].includes(locationStatus.value))
+const isOpeningReady = computed(() => ['granted', 'fallback', 'selected'].includes(locationStatus.value))
 const needsLocationPermission = computed(() => locationStatus.value === 'needs-permission')
 const needsPermissionReset = computed(() => locationMessage.value.includes('다시 허용'))
 const openingActionLabel = computed(() => {
@@ -156,11 +156,16 @@ const characterMessage = computed(() => {
         :style="{ backgroundImage: `url(${selectedCityInfo.background})` }"
       >
         <div class="opening-weather">
-          <template v-if="isOpeningReady">
+          <template v-if="isOpeningReady && weatherDataSource === 'kma'">
             <p>{{ locationMessage }} · {{ selectedCityInfo.area }}</p>
             <span>{{ selectedCityInfo.current.status }}</span>
             <strong>{{ formatTemperature(selectedCityInfo.current.temperature) }}</strong>
             <small>오늘의 틈을 열고 있어요</small>
+          </template>
+          <template v-else-if="isOpeningReady">
+            <p>{{ locationMessage }} · {{ selectedCityInfo.area }}</p>
+            <strong class="permission-title">실시간 날씨를 불러오고 있어요</strong>
+            <small>기상청 응답이 도착하면 오늘의 창이 열려요.</small>
           </template>
           <template v-else>
             <p>GPS WEATHER · FIRST</p>
@@ -193,20 +198,22 @@ const characterMessage = computed(() => {
           <div class="window-shade"></div>
           <div class="window-copy">
             <p class="overline">{{ locationMessage }} · {{ selectedCityInfo.area }} · {{ weatherDate }}</p>
-            <h1>
+            <h1 v-if="weatherDataSource === 'kma'">
               <span>{{ weatherStory[0] }}</span>
               <em>{{ weatherStory[1] }}</em>
             </h1>
+            <h1 v-else><span>실시간 하늘을</span><em>불러오고 있어요.</em></h1>
             <p class="hero-intro">오늘의 숫자와 하루를 보내기 좋은 순간을 한 창에 담았어요.</p>
           </div>
 
           <div class="window-weather">
-            <div class="weather-primary">
+            <div v-if="weatherDataSource === 'kma'" class="weather-primary">
               <span>{{ selectedCityInfo.current.status }}</span>
               <strong>{{ formatTemperature(selectedCityInfo.current.temperature) }}</strong>
               <small>{{ selectedCityInfo.current.sentence }}</small>
             </div>
-            <dl>
+            <div v-else class="weather-primary"><strong>확인 중…</strong><small>준비된 숫자 대신 기상청 응답을 기다려요.</small></div>
+            <dl v-if="weatherDataSource === 'kma'">
               <div><dt>체감</dt><dd>{{ formatTemperature(selectedCityInfo.current.apparentTemperature) }}</dd></div>
               <div><dt>습도</dt><dd>{{ selectedCityInfo.current.humidity }}%</dd></div>
               <div><dt>바람</dt><dd>{{ selectedCityInfo.current.windSpeed }} km/h</dd></div>
@@ -219,7 +226,7 @@ const characterMessage = computed(() => {
 
           <span class="window-frame frame-vertical" aria-hidden="true"></span>
           <span class="window-frame frame-horizontal" aria-hidden="true"></span>
-          <p class="window-caption">{{ weatherDataSource === 'kma' ? 'KMA LIVE' : weatherDataSource === 'open-meteo' ? 'LIVE WEATHER' : 'PREPARED WEATHER' }} · {{ updateText }}</p>
+          <p class="window-caption">{{ weatherDataSource === 'kma' ? 'KMA LIVE' : 'KMA 연결 중' }} · {{ updateText }}</p>
         </article>
 
         <aside class="character-stage">
@@ -238,16 +245,17 @@ const characterMessage = computed(() => {
         </aside>
       </section>
 
-      <section class="now-strip" aria-label="현재 날씨 세부 정보">
+      <section v-if="weatherDataSource === 'kma'" class="now-strip" aria-label="현재 날씨 세부 정보">
         <p class="strip-lead">지금의 공기</p>
         <article><small>체감</small><strong>{{ formatTemperature(selectedCityInfo.current.apparentTemperature) }}</strong></article>
         <article><small>습도</small><strong>{{ selectedCityInfo.current.humidity }}%</strong></article>
         <article><small>바람</small><strong>{{ windWord }} · {{ selectedCityInfo.current.windSpeed }} km/h</strong></article>
-        <article><small>해가 머무는 시간</small><strong>{{ selectedCityInfo.sun?.sunrise ?? '05:48' }}—{{ selectedCityInfo.sun?.sunset ?? '19:28' }}</strong></article>
-        <article><small>자외선</small><strong>UV {{ Math.round(selectedCityInfo.sun?.uvMax ?? 4) }}</strong></article>
+        <article><small>자외선</small><strong>{{ Number.isFinite(selectedCityInfo.sun?.uvMax) ? `UV ${Math.round(selectedCityInfo.sun.uvMax)}` : '확인 중' }}</strong></article>
+        <article><small>해 뜨고 지는 시각</small><strong>{{ selectedCityInfo.sun?.sunrise ?? '--:--' }} · {{ selectedCityInfo.sun?.sunset ?? '--:--' }}</strong></article>
       </section>
+      <section v-else class="live-loading" aria-live="polite">실시간 날씨와 생활지수를 불러오는 중…</section>
 
-      <section id="rhythm" class="rhythm-section">
+      <section v-if="weatherDataSource === 'kma'" id="rhythm" class="rhythm-section">
         <div class="section-title">
           <div>
             <p class="overline">LIFE WINDOW · HOURLY</p>
@@ -292,7 +300,7 @@ const characterMessage = computed(() => {
         <p class="chart-legend"><span></span>활동 적합도 · 강수 확률과 체감온도, 바람을 함께 계산했어요.</p>
       </section>
 
-      <section id="forecast" class="forecast-section">
+      <section v-if="weatherDataSource === 'kma'" id="forecast" class="forecast-section">
         <div class="section-title">
           <div>
             <p class="overline">FIVE SMALL TOMORROWS</p>
@@ -335,7 +343,7 @@ const characterMessage = computed(() => {
       <footer>
         <div class="brand footer-brand"><span class="brand-mark">O</span><span>오늘의 틈<small>WEATHER FOR LIFE</small></span></div>
         <p>날씨를 확인하는 데서 그치지 않고,<br />오늘을 잘 보내는 순간을 제안합니다.</p>
-        <small><RouterLink to="/about">서비스 소개</RouterLink> · REAL-TIME BY KMA · FORECAST BY OPEN-METEO</small>
+        <small><RouterLink to="/about">서비스 소개</RouterLink> · KMA · AIRKOREA · DATA.GO.KR</small>
       </footer>
     </div>
   </main>
@@ -435,6 +443,7 @@ const characterMessage = computed(() => {
 .now-strip article { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 .now-strip small { color: #77786f; font-size: 13px; }
 .now-strip strong { font-size: 15px; font-weight: 600; }
+.live-loading { padding: 28px; color: rgb(230 236 255 / 68%); border-top: 1px solid rgb(255 255 255 / 17%); border-bottom: 1px solid rgb(255 255 255 / 17%); text-align: center; }
 
 .rhythm-section, .forecast-section, .city-postcards { padding: var(--card-padding); }
 .section-title { display: flex; margin-bottom: clamp(28px, 3vw, 40px); align-items: end; justify-content: space-between; gap: 28px; }

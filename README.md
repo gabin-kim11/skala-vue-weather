@@ -4,7 +4,7 @@
 
 `오늘의 틈`은 Vue 수업에서 단원마다 이어진 **Hands on Weather 과제**를 단계적으로 빌드업해 완성한 반응형 SPA입니다. 세 도시의 Mock 데이터를 카드로 출력하던 첫 과제에서 출발해, Composition API, 컴포넌트 분리, Router, Pinia, Axios와 배포 과정을 차례로 반영했습니다. 최종적으로 GPS 현재 위치, 전국 17개 시·도 탐색, 시간대별 외출 플래너, 즐겨찾기 비교, 도시별 장소·음식·활동 추천을 하나의 사용자 흐름으로 연결했습니다.
 
-외부 API가 느리거나 호출 제한(`429 Too Many Requests`)이 발생해도 화면이 멈추지 않도록 준비된 날씨 데이터로 자동 전환합니다.
+날씨·생활지수는 모두 국내 공공 API의 최신 응답을 사용합니다. 현재 관측과 예보는 기상청 API허브, 자외선은 기상청 생활기상지수, 공기질은 에어코리아, 일출·일몰은 한국천문연구원 데이터를 서버 프록시를 통해 연결했습니다.
 
 ## 과제에서 최종 서비스까지
 
@@ -17,7 +17,7 @@
 | Weather Component | 카드·검색창을 컴포넌트로 분리하고 Props, Emits, Slot, `scoped` 스타일 적용 | 공통 카드·검색·도시 카드·헤더 컴포넌트로 역할을 나누고 전역 디자인 토큰 구성 |
 | Weather Router | 홈·상세·소개 화면, 동적 경로, lazy loading, catch-all route 적용 | `/planner`, `/cities`, `/map`을 추가해 총 6개 화면의 탐색 흐름으로 확장 |
 | Weather Store | Pinia의 state·getter·action으로 섭씨/화씨 단위 관리 | 위치·선택 도시·날씨·단위·즐겨찾기·로딩·오류를 통합하고 `localStorage`에 사용자 설정 저장 |
-| Weather Axios | Axios로 실제 날씨 API를 연결하고 외부 API로 기능 확장 | 기상청·Open-Meteo 연동, 요청 캐시·중복 방지·재시도·fallback 데이터 적용 |
+| Weather Axios | Axios로 실제 날씨 API를 연결하고 외부 API로 기능 확장 | 기상청·에어코리아·한국천문연구원 API 연동, 서버 프록시와 응답 정규화 적용 |
 | UI·Refinement | 외부 UI Library 적용, 기능 정비, README에 구현 과정 기록 | 컴포넌트 기반 UI 원칙은 반영하되 최종 디자인은 CSS Grid·Flexbox·디자인 토큰으로 직접 구현 |
 | Build·Deployment | ESLint 검사, API 키 분리, 프로덕션 빌드와 정적 호스팅 | GitHub Actions 품질 검사, 환경 변수 보호, Vercel 배포와 SPA 직접 경로 새로고침 대응 |
 
@@ -90,12 +90,13 @@
 
 ### 5. Axios와 외부 API
 
-- Axios로 Open-Meteo Forecast / Air Quality API를 호출합니다.
-- 같은 좌표의 중복 요청을 합치고 10분 캐시를 적용했습니다.
-- 요청을 순차 처리하고 `Retry-After` 또는 지수 백오프로 `429`를 제한적으로 재시도합니다.
-- 메인·지도·상세·플래너에서는 선택한 도시만 호출하고, 전국 목록은 `/cities`에 들어갈 때만 4개씩 나눠 갱신합니다.
-- Open-Meteo 호출에 실패하면 해당 도시만 준비된 데이터로 전환합니다.
-- 기상청 초단기실황은 로컬 Vite 프록시 또는 Vercel 서버리스 프록시를 통해 호출합니다.
+- Axios로 앱의 `/api/kma`, `/api/public-data` 서버 프록시를 호출합니다.
+- 기상청 API허브의 초단기실황·단기예보로 현재 관측, 시간별 예보와 5일 예보를 구성합니다.
+- 기상청 생활기상지수 조회서비스의 자외선지수를 사용합니다.
+- 에어코리아 시도별 실시간 대기오염정보에서 선택 도시의 대표 측정소 통합대기환경지수·미세먼지 값을 사용합니다.
+- 한국천문연구원 출몰시각정보의 지역별 일출·일몰 시각을 사용합니다.
+- 메인·지도·상세·플래너에서는 선택 도시를 우선 호출하고, 전국 목록은 `/cities` 진입 시 3개씩 나눠 갱신합니다.
+- 외부 응답에 없는 생활지수는 임의의 숫자로 채우지 않고 `확인 중`으로 표시합니다.
 
 ### 6. 직접 추가한 기능
 
@@ -103,7 +104,7 @@
 - 날씨 상태별 CSS 애니메이션과 구름 고양이 스프라이트
 - 전국 도시 지도, 도시별 고유 일러스트와 여행 가이드 데이터
 - 반응형 모바일 메뉴, 접근 가능한 버튼 이름과 `aria-pressed`
-- API 장애 시에도 탐색 가능한 fallback 설계
+- API 장애 시 임의의 값을 노출하지 않는 `확인 중` 상태와 요청 중복 방지 설계
 - ESLint와 GitHub Actions를 이용한 자동 품질 검사
 
 ## 기술 스택
@@ -113,7 +114,7 @@
 - Axios, Browser Geolocation API
 - Vite 8, ESLint 9
 - CSS Grid, Flexbox, animation, glassmorphism
-- 기상청 단기예보 조회 서비스, Open-Meteo(선택)
+- 기상청 API허브·생활기상지수, 에어코리아, 한국천문연구원 출몰시각정보
 
 ## 실행 방법
 
@@ -128,24 +129,22 @@ cp .env.example .env.local
 npm run dev
 ```
 
-API 키 없이도 준비된 날씨 데이터로 모든 주요 화면을 확인할 수 있습니다.
+API 키가 없으면 화면 구조는 확인할 수 있지만 실시간 수치는 표시되지 않습니다.
 
 ### 로컬 환경 변수
 
 `.env.local`은 Git에서 제외되며 로컬 개발에만 사용합니다.
 
 ```env
-# 공공데이터포털 일반 인증키(Decoding), 선택 사항
-VITE_KMA_SERVICE_KEY=
+# 기상청 API허브 authKey
+KMA_API_HUB_KEY=
 
-# Open-Meteo 실시간 예보 사용 여부
-VITE_OPEN_METEO_ENABLED=true
+# 공공데이터포털 일반 인증키(Decoding)
+DATA_GO_KR_SERVICE_KEY=
 
-# 로컬에서 별도 /api/kma 서버를 사용하는 경우만 true
-VITE_KMA_PROXY_ENABLED=false
 ```
 
-`VITE_`로 시작하는 값은 브라우저 번들에서 확인할 수 있으므로, 실제 배포에서는 기상청 키를 이 변수에 넣지 않습니다.
+두 인증키는 브라우저 번들에 포함하지 않고 로컬 Vite 프록시와 Vercel 서버리스 함수에서만 사용합니다. 키 이름에 `VITE_`를 붙이면 브라우저에 노출될 수 있으므로 사용하지 않습니다.
 
 ## 명령어
 
@@ -162,7 +161,8 @@ VITE_KMA_PROXY_ENABLED=false
 ```text
 .
 ├── api/
-│   └── kma.js                       # Vercel용 기상청 서버리스 프록시
+│   ├── kma.js                       # Vercel용 기상청 서버리스 프록시
+│   └── public-data.js               # 생활기상·대기질·일출일몰 프록시
 ├── public/
 │   ├── korea-illustrated-map.png
 │   └── og.png
@@ -181,15 +181,16 @@ VITE_KMA_PROXY_ENABLED=false
 │   │   ├── composables/useWeatherApplication.js
 │   │   ├── data/                    # 도시와 추천 콘텐츠
 │   │   ├── services/kmaWeather.js
+│   │   ├── services/publicDataWeather.js
 │   │   └── utils/                   # 격자·날씨 코드 변환
 │   ├── router/index.js
 │   ├── stores/weatherStore.js
 │   ├── views/                       # 6개 라우트 화면
 │   ├── App.vue
 │   └── main.js
+├── server/publicData.js             # 공공데이터 응답 정규화
 ├── .env.example
 ├── eslint.config.js
-├── netlify.toml
 ├── vercel.json
 └── vite.config.js
 ```
@@ -203,12 +204,10 @@ VITE_KMA_PROXY_ENABLED=false
 1. 이 프로젝트를 Public GitHub 저장소에 push합니다.
 2. Vercel에서 저장소를 Import합니다.
 3. Framework Preset은 `Vite`, Build Command는 `npm run build`, Output Directory는 `dist`를 사용합니다.
-4. 기상청 실시간 데이터가 필요하면 Vercel 프로젝트 환경 변수에 `KMA_SERVICE_KEY`를 추가합니다. 이름에 `VITE_`를 붙이지 않습니다.
+4. Vercel 프로젝트 환경 변수에 `KMA_API_HUB_KEY`와 `DATA_GO_KR_SERVICE_KEY`를 추가합니다. 이름에 `VITE_`를 붙이지 않습니다.
 5. 배포 후 `/`, `/cities`, `/weather/seoul`을 시크릿 창에서 직접 열고 새로고침합니다.
 
-`api/kma.js`는 서버에서만 `KMA_SERVICE_KEY`를 읽습니다. `vercel.json`은 API와 정적 파일을 먼저 처리한 뒤 나머지 경로를 `index.html`로 보내므로 Vue Router의 상세 주소도 새로고침할 수 있습니다.
-
-`netlify.toml`에도 SPA 새로고침 규칙이 들어 있습니다. 다만 현재 기상청 서버리스 프록시는 Vercel 형식이므로 Netlify 배포에서는 준비된 데이터가 표시됩니다.
+`api/kma.js`와 `api/public-data.js`는 서버에서만 인증키를 읽고 필요한 외부 API에 요청을 전달합니다. `vercel.json`은 API와 정적 파일을 먼저 처리한 뒤 나머지 경로를 `index.html`로 보내므로 Vue Router의 상세 주소도 새로고침할 수 있습니다.
 
 ### GitHub에 올리지 않는 파일
 
@@ -230,23 +229,15 @@ VITE_KMA_PROXY_ENABLED=false
 - 즐겨찾기 도시
 - 플래너 준비물 체크 상태
 
-GPS를 가져오지 못하면 서울을 사용하며, 날씨 API에 실패하면 준비된 날씨를 사용합니다. 외부 API 장애가 내비게이션·도시 검색·추천 콘텐츠를 막지 않도록 설계했습니다.
+GPS를 가져오지 못하면 서울을 사용합니다. 외부 API가 제공하지 못한 생활지수는 `확인 중`으로 구분해 임의의 값이 실시간 정보처럼 보이지 않도록 했습니다.
 
 ## 문제 해결
 
-### `429 Too Many Requests`
-
-1. `.env.local`에서 `VITE_OPEN_METEO_ENABLED=false`로 설정합니다.
-2. 개발 서버를 다시 시작합니다.
-3. 브라우저를 새로고침합니다.
-
-선택 도시 우선 호출, 10분 캐시, 전국 목록 분할 요청과 재시도가 적용되지만 공유 API 제한 자체를 없앨 수는 없습니다. 연결이 계속 제한되면 준비된 날씨만 표시되도록 위 설정을 `false`로 바꿀 수 있습니다.
-
 ### 기상청 데이터가 나오지 않음
 
-- 로컬: `.env.local`의 `VITE_KMA_SERVICE_KEY`가 Decoding 키인지 확인합니다.
-- Vercel: 프로젝트 환경 변수 이름이 `KMA_SERVICE_KEY`인지 확인하고 재배포합니다.
-- 키가 없어도 오류 화면 대신 준비된 날씨가 표시되는 것이 정상입니다.
+- 로컬: `.env.local`의 `KMA_API_HUB_KEY`에 API허브 `authKey`가 입력됐는지 확인합니다.
+- Vercel: 프로젝트 환경 변수 이름이 `KMA_API_HUB_KEY`인지 확인하고 재배포합니다.
+- 생활지수까지 사용하려면 Vercel의 `DATA_GO_KR_SERVICE_KEY`에 공공데이터포털 일반 인증키(Decoding)도 등록하고 재배포합니다.
 
 ### GPS가 서울로 표시됨
 
@@ -258,7 +249,7 @@ GPS를 가져오지 못하면 서울을 사용하며, 날씨 API에 실패하면
 | --- | --- | --- |
 | 일러스트 지도와 마커의 기준 비율이 달라 일부 도시가 바다 쪽에 표시됨 | 장식용 지도 위의 수동 마커 방식을 제거하고 실제 시·도 경계 SVG와 17개 지역 라벨로 교체 | 각 지역 도형·지역명 선택 시 해당 도시 상세 화면으로 이동 확인 |
 | 지도에서 도시를 고른 뒤 홈으로 이동하면 GPS 도시로 되돌아감 | 홈 초기화 시 자동 GPS 복원 로직을 제거하고 사용자가 선택한 도시를 유지 | 배포 환경에서 `청주 선택 → 도시 상세 → 오늘 날씨` 이동 후 헤더와 메인 모두 청주 유지 확인 |
-| 첫 화면에서 전국 도시를 함께 호출해 `429 Too Many Requests`가 발생할 수 있음 | 선택 도시만 우선 호출하고 전국 날씨는 `/cities` 진입 시 4개씩 분할 요청하도록 변경, 10분 캐시·중복 방지·재시도·fallback 적용 | 메인과 플래너는 선택 도시의 실시간 예보를 사용하고 API 실패 시에도 주요 화면이 유지됨 |
+| 외부 API의 일시 장애가 브라우저 오류로 표시되거나 같은 요청이 중복됨 | 선택형 생활정보 실패를 `available: false`로 정규화하고 기상청·생활정보 요청 캐시와 진행 중 요청 공유 적용 | 응답 전에는 샘플 숫자 없이 `확인 중` 표시, 정상 응답만 10분 캐시 |
 | 배포 주소에서 상세 경로를 직접 열거나 새로고침하면 404가 발생할 수 있음 | Vercel rewrite로 API·정적 파일 외 경로를 `index.html`에 연결 | `/map`, `/planner`, `/weather/cheongju` 직접 접근 확인 |
 
 ## 검증 상태

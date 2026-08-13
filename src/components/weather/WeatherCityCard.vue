@@ -22,12 +22,12 @@ defineEmits(['select', 'toggle-favorite'])
       <span class="card-gradient"></span>
       <span class="city-card-top">
         <small>{{ city.area }}</small>
-        <span>{{ city.current.icon }} {{ city.current.status }}</span>
+        <span>{{ city.source !== 'pending' ? `${city.current.icon} ${city.current.status}` : '실시간 확인 중' }}</span>
       </span>
       <span class="city-card-copy">
         <strong>{{ city.name }}</strong>
-        <em>{{ displayTemperature }}</em>
-        <small>오늘의 첫 추천 · {{ highlight }}</small>
+        <em>{{ city.source !== 'pending' ? displayTemperature : '—' }}</em>
+        <small>{{ city.source !== 'pending' ? `오늘의 첫 추천 · ${highlight}` : '공공 API 응답을 기다리고 있어요' }}</small>
       </span>
       <span class="detail-arrow">여행 보기 ↗</span>
     </button>

@@ -124,7 +124,7 @@ onBeforeUnmount(() => window.clearTimeout(zoomTimer))
         <div class="panel-title">
           <p>REGION FINDER</p>
           <h1>어느 지역의<br />하늘을 볼까요?</h1>
-          <span>{{ locationMessage }} · {{ weatherDataSource === 'kma' ? '기상청 실황' : weatherDataSource === 'open-meteo' ? '실시간 예보' : '준비된 날씨' }}</span>
+          <span>{{ locationMessage }} · {{ weatherDataSource === 'kma' ? '기상청 실시간 날씨' : '기상청 연결 중' }}</span>
         </div>
 
         <button
@@ -230,18 +230,19 @@ onBeforeUnmount(() => window.clearTimeout(zoomTimer))
             @click="chooseRegion(region.cityId)"
           >
             <span>{{ region.label }}</span>
-            <small v-if="selectedCityInfo.id === region.cityId">{{ formatTemperature(region.city.current.temperature) }}</small>
+            <small v-if="selectedCityInfo.id === region.cityId && region.city.source !== 'pending'">{{ formatTemperature(region.city.current.temperature) }}</small>
           </button>
         </div>
 
         <article class="selected-weather-card">
-          <div>
+          <div v-if="selectedCityInfo.source !== 'pending'">
             <p>SELECTED REGION</p>
             <h3>{{ selectedCityInfo.area }} · {{ selectedCityInfo.name }}</h3>
             <span>{{ selectedCityInfo.current.status }}</span>
           </div>
-          <strong>{{ formatTemperature(selectedCityInfo.current.temperature) }}</strong>
-          <dl>
+          <strong v-if="selectedCityInfo.source !== 'pending'">{{ formatTemperature(selectedCityInfo.current.temperature) }}</strong>
+          <strong v-else>확인 중…</strong>
+          <dl v-if="selectedCityInfo.source !== 'pending'">
             <div><dt>체감</dt><dd>{{ formatTemperature(selectedCityInfo.current.apparentTemperature) }}</dd></div>
             <div><dt>습도</dt><dd>{{ selectedCityInfo.current.humidity }}%</dd></div>
             <div><dt>바람</dt><dd>{{ selectedCityInfo.current.windSpeed }} km/h</dd></div>

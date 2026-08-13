@@ -1,16 +1,8 @@
 const cityBackgrounds = import.meta.glob('../../../assets/cities/*.png', { eager: true, import: 'default' })
 const cityBackground = (cityId) => cityBackgrounds[`../../../assets/cities/${cityId}.png`]
 
-const mock = (temperature, humidity, windSpeed, weatherCode = 2) => ({
-  temperature,
-  apparentTemperature: temperature,
-  humidity,
-  windSpeed,
-  weatherCode,
-})
-
 // 전국 17개 시·도의 대표 행정도시 좌표입니다.
-// 실시간 호출 전에는 mock이 즉시 표시되고, 이후 GPS/기상 API 값으로 교체됩니다.
+// 날씨 수치는 이 파일에 저장하지 않고 공공 API 응답으로만 채웁니다.
 export const cityCatalog = [
   {
     id: 'seoul',
@@ -18,8 +10,9 @@ export const cityCatalog = [
     area: '서울특별시',
     latitude: 37.5665,
     longitude: 126.978,
+    uvAreaNo: '1100000000',
+    airSido: '서울', airStation: '종로구',
     background: cityBackground('seoul'),
-    mock: mock(28, 42, 7, 0),
   },
   {
     id: 'busan',
@@ -27,8 +20,9 @@ export const cityCatalog = [
     area: '부산광역시',
     latitude: 35.1796,
     longitude: 129.0756,
+    uvAreaNo: '2600000000',
+    airSido: '부산', airStation: '광복동',
     background: cityBackground('busan'),
-    mock: mock(26, 68, 12, 3),
   },
   {
     id: 'daegu',
@@ -36,8 +30,9 @@ export const cityCatalog = [
     area: '대구광역시',
     latitude: 35.8714,
     longitude: 128.6014,
+    uvAreaNo: '2700000000',
+    airSido: '대구', airStation: '수창동',
     background: cityBackground('daegu'),
-    mock: mock(29, 49, 6, 1),
   },
   {
     id: 'incheon',
@@ -45,8 +40,9 @@ export const cityCatalog = [
     area: '인천광역시',
     latitude: 37.4563,
     longitude: 126.7052,
+    uvAreaNo: '2800000000',
+    airSido: '인천', airStation: '신흥',
     background: cityBackground('incheon'),
-    mock: mock(26, 64, 13, 2),
   },
   {
     id: 'gwangju',
@@ -54,8 +50,9 @@ export const cityCatalog = [
     area: '광주광역시',
     latitude: 35.1595,
     longitude: 126.8526,
+    uvAreaNo: '2900000000',
+    airSido: '광주', airStation: '서석동',
     background: cityBackground('gwangju'),
-    mock: mock(28, 57, 7, 1),
   },
   {
     id: 'daejeon',
@@ -63,8 +60,9 @@ export const cityCatalog = [
     area: '대전광역시',
     latitude: 36.3504,
     longitude: 127.3845,
+    uvAreaNo: '3000000000',
+    airSido: '대전', airStation: '읍내동',
     background: cityBackground('daejeon'),
-    mock: mock(27, 55, 6, 2),
   },
   {
     id: 'ulsan',
@@ -72,8 +70,9 @@ export const cityCatalog = [
     area: '울산광역시',
     latitude: 35.5384,
     longitude: 129.3114,
+    uvAreaNo: '3100000000',
+    airSido: '울산', airStation: '성남동',
     background: cityBackground('ulsan'),
-    mock: mock(26, 66, 12, 3),
   },
   {
     id: 'sejong',
@@ -81,8 +80,9 @@ export const cityCatalog = [
     area: '세종특별자치시',
     latitude: 36.48,
     longitude: 127.289,
+    uvAreaNo: '3600000000',
+    airSido: '세종', airStation: '아름동',
     background: cityBackground('sejong'),
-    mock: mock(27, 54, 7, 2),
   },
   {
     id: 'suwon',
@@ -90,8 +90,9 @@ export const cityCatalog = [
     area: '경기도',
     latitude: 37.2636,
     longitude: 127.0286,
+    uvAreaNo: '4111000000',
+    airSido: '경기', airStation: '인계동',
     background: cityBackground('suwon'),
-    mock: mock(24, 79, 9, 61),
   },
   {
     id: 'chuncheon',
@@ -99,8 +100,9 @@ export const cityCatalog = [
     area: '강원특별자치도',
     latitude: 37.8813,
     longitude: 127.73,
+    uvAreaNo: '4211000000',
+    airSido: '강원', airStation: '중앙로',
     background: cityBackground('chuncheon'),
-    mock: mock(25, 62, 6, 2),
   },
   {
     id: 'cheongju',
@@ -108,8 +110,9 @@ export const cityCatalog = [
     area: '충청북도',
     latitude: 36.6424,
     longitude: 127.489,
+    uvAreaNo: '4311000000',
+    airSido: '충북', airStation: '송정동',
     background: cityBackground('cheongju'),
-    mock: mock(27, 55, 6, 1),
   },
   {
     id: 'hongseong',
@@ -117,8 +120,9 @@ export const cityCatalog = [
     area: '충청남도',
     latitude: 36.6012,
     longitude: 126.6608,
+    uvAreaNo: '4480000000',
+    airSido: '충남', airStation: '홍성읍',
     background: cityBackground('hongseong'),
-    mock: mock(25, 68, 9, 3),
   },
   {
     id: 'jeonju',
@@ -126,8 +130,9 @@ export const cityCatalog = [
     area: '전북특별자치도',
     latitude: 35.8242,
     longitude: 127.148,
+    uvAreaNo: '4511000000',
+    airSido: '전북', airStation: '서신동',
     background: cityBackground('jeonju'),
-    mock: mock(28, 58, 7, 1),
   },
   {
     id: 'muan',
@@ -135,8 +140,9 @@ export const cityCatalog = [
     area: '전라남도',
     latitude: 34.9905,
     longitude: 126.4817,
+    uvAreaNo: '4684000000',
+    airSido: '전남', airStation: '무안읍',
     background: cityBackground('muan'),
-    mock: mock(26, 71, 11, 3),
   },
   {
     id: 'andong',
@@ -144,8 +150,9 @@ export const cityCatalog = [
     area: '경상북도',
     latitude: 36.5684,
     longitude: 128.7294,
+    uvAreaNo: '4717000000',
+    airSido: '경북', airStation: '명륜동',
     background: cityBackground('andong'),
-    mock: mock(27, 52, 6, 1),
   },
   {
     id: 'changwon',
@@ -153,8 +160,9 @@ export const cityCatalog = [
     area: '경상남도',
     latitude: 35.2279,
     longitude: 128.6811,
+    uvAreaNo: '4812000000',
+    airSido: '경남', airStation: '회원동',
     background: cityBackground('changwon'),
-    mock: mock(26, 69, 10, 2),
   },
   {
     id: 'jeju',
@@ -162,7 +170,8 @@ export const cityCatalog = [
     area: '제주특별자치도',
     latitude: 33.4996,
     longitude: 126.5312,
+    uvAreaNo: '5011000000',
+    airSido: '제주', airStation: '이도동',
     background: cityBackground('jeju'),
-    mock: mock(24, 73, 15, 45),
   },
 ]

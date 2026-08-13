@@ -15,6 +15,7 @@ const { formatTemperature, selectCity } = weatherStore
 
 const routeCityId = computed(() => String(route.params.cityId || 'seoul'))
 const city = computed(() => weatherList.value.find((item) => item.id === routeCityId.value) ?? selectedCityInfo.value)
+const hasLiveWeather = computed(() => city.value.source !== 'pending')
 const guide = computed(() => getCityGuide(city.value.guideId ?? city.value.id))
 const isWet = computed(() => (city.value.current.precipitation ?? 0) > 0 || city.value.current.weatherCode >= 51)
 const isCold = computed(() => city.value.current.temperature <= 7)
@@ -46,15 +47,17 @@ onMounted(() => {
     <section class="journey-hero glass">
       <div class="journey-copy">
         <p class="eyebrow">{{ city.area }} · WEATHER JOURNEY</p>
-        <h1>{{ city.name }}의 오늘은<br /><em>{{ place[0] }}</em>으로 가요.</h1>
-        <p class="weather-note">{{ moodCopy }}</p>
+        <h1 v-if="hasLiveWeather">{{ city.name }}의 오늘은<br /><em>{{ place[0] }}</em>으로 가요.</h1>
+        <h1 v-else>{{ city.name }}의 실시간 날씨를<br /><em>확인하고 있어요.</em></h1>
+        <p v-if="hasLiveWeather" class="weather-note">{{ moodCopy }}</p>
+        <p v-else class="weather-note">기상청 응답이 도착하면 오늘의 장소를 추천해 드릴게요.</p>
 
-        <div class="weather-line">
+        <div v-if="hasLiveWeather" class="weather-line">
           <strong>{{ formatTemperature(city.current.temperature) }}</strong>
           <span>{{ city.current.status }}<small>{{ city.current.sentence }}</small></span>
         </div>
 
-        <div class="recommendation-card">
+        <div v-if="hasLiveWeather" class="recommendation-card">
           <span>01 · TODAY'S PLACE</span>
           <h2>{{ place[0] }}</h2>
           <p>{{ place[1] }}</p>
@@ -81,7 +84,7 @@ onMounted(() => {
       </div>
     </section>
 
-    <section class="journey-grid">
+    <section v-if="hasLiveWeather" class="journey-grid">
       <article class="guide-card places-card glass">
         <span>01 · PLACES TO GO</span>
         <h2>놀러 가면 좋을 곳</h2>
@@ -113,6 +116,7 @@ onMounted(() => {
         </ol>
       </article>
     </section>
+    <section v-else class="detail-loading glass" aria-live="polite">실시간 날씨와 여행 추천을 불러오는 중…</section>
 
     <footer>
       <RouterLink to="/map">← 전국 지도로 돌아가기</RouterLink>
@@ -158,6 +162,7 @@ h1 em { color: transparent; background: linear-gradient(105deg, #fff, #cbd9ff 50
 .landmark-layer i { display: block; width: 20%; height: 55%; background: linear-gradient(180deg, rgb(240 224 231 / 72%), rgb(113 128 179 / 35%)); border-radius: 45% 45% 4px 4px; }
 .landmark-layer i:nth-child(2) { height: 86%; }.landmark-layer i:nth-child(3) { height: 42%; }.landmark-layer i:nth-child(4) { height: 68%; }.landmark-layer i:nth-child(5) { height: 35%; }
 .journey-grid { display: grid; width: min(1440px, 100%); margin: 14px auto 0; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.detail-loading { width: min(1440px, 100%); margin: 14px auto 0; padding: 52px; color: rgb(255 255 255 / 65%); border-radius: 28px; text-align: center; }
 .journey-grid article { min-height: 360px; padding: 34px; border-radius: 28px; }
 .journey-grid h2 { margin: 0 0 24px; font-size: 26px; letter-spacing: -.03em; }
 .guide-card { position: relative; overflow: hidden; }

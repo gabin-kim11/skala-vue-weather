@@ -72,9 +72,6 @@ onMounted(() => {
         </div>
         <WeatherSearchBar v-model="filters.query" :result-count="filteredCities.length" />
       </template>
-      <template #footer>
-        검색과 즐겨찾기 상태를 조합한 computed 결과 {{ filteredCities.length }}개
-      </template>
     </BaseDashboardCard>
 
     <section class="city-grid" aria-live="polite">

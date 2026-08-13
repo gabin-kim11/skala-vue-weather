@@ -1,142 +1,31 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import axios from 'axios'
 
 import { cityCatalog } from '../components/weather/data/cities'
-import { fetchKmaCurrentWeather } from '../components/weather/services/kmaWeather'
+import { fetchKmaCurrentWeather, fetchKmaForecast } from '../components/weather/services/kmaWeather'
+import { fetchPublicDataWeather } from '../components/weather/services/publicDataWeather'
 import { describeWeatherCode } from '../components/weather/utils/weatherCode'
 
-const API_URL = 'https://api.open-meteo.com/v1/forecast'
-const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
-// 별도 설정이 없어도 선택한 도시의 실시간 예보를 사용한다.
-// 호출을 끄고 준비된 데이터만 확인하려는 경우에만 false로 설정한다.
-const OPEN_METEO_ENABLED = import.meta.env.VITE_OPEN_METEO_ENABLED !== 'false'
 const WEATHER_CACHE_TTL = 10 * 60 * 1000
-const MIN_FORECAST_REQUEST_INTERVAL = 350
-const MAX_RATE_LIMIT_RETRIES = 2
-const NATIONWIDE_BATCH_SIZE = 4
+const NATIONWIDE_BATCH_SIZE = 3
 
-const forecastCache = new Map()
-const forecastRequests = new Map()
-let forecastRequestQueue = Promise.resolve()
-let lastForecastRequestAt = 0
-
-const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
-
-const getRetryDelay = (error, attempt) => {
-  const retryAfter = error?.response?.headers?.['retry-after']
-  if (retryAfter) {
-    const seconds = Number(retryAfter)
-    if (Number.isFinite(seconds)) return Math.min(seconds * 1000, 30_000)
-
-    const retryAt = Date.parse(retryAfter)
-    if (Number.isFinite(retryAt)) return Math.min(Math.max(retryAt - Date.now(), 0), 30_000)
-  }
-  return 1000 * 2 ** attempt
-}
-
-const requestWithRateLimitRetry = async (request) => {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await request()
-    } catch (error) {
-      if (error?.response?.status !== 429 || attempt >= MAX_RATE_LIMIT_RETRIES) throw error
-      await wait(getRetryDelay(error, attempt))
-    }
-  }
-}
-
-// Open-Meteo 요청을 한 줄로 세워 브라우저 한 곳에서 순간 호출 제한을 넘지 않게 한다.
-const scheduleForecastRequest = (request) => {
-  const scheduled = forecastRequestQueue.then(async () => {
-    const remainingDelay = MIN_FORECAST_REQUEST_INTERVAL - (Date.now() - lastForecastRequestAt)
-    if (remainingDelay > 0) await wait(remainingDelay)
-    lastForecastRequestAt = Date.now()
-    return requestWithRateLimitRetry(request)
-  })
-  forecastRequestQueue = scheduled.catch(() => undefined)
-  return scheduled
-}
-
-const forecastCacheKey = (city) => `${Number(city.latitude).toFixed(4)},${Number(city.longitude).toFixed(4)}`
-
-const fetchForecastData = (city) => {
-  const cacheKey = forecastCacheKey(city)
-  const cached = forecastCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.data)
-  if (forecastRequests.has(cacheKey)) return forecastRequests.get(cacheKey)
-
-  const request = scheduleForecastRequest(async () => {
-    const response = await axios.get(API_URL, {
-      params: {
-        latitude: city.latitude,
-        longitude: city.longitude,
-        current:
-          'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation',
-        hourly:
-          'temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m',
-        daily:
-          'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max',
-        timezone: 'Asia/Seoul',
-        forecast_days: 5,
-      },
-      timeout: 6500,
-    })
-    forecastCache.set(cacheKey, { data: response.data, expiresAt: Date.now() + WEATHER_CACHE_TTL })
-    return response.data
-  }).finally(() => forecastRequests.delete(cacheKey))
-
-  forecastRequests.set(cacheKey, request)
-  return request
-}
-
-const createMockHourly = (city) => {
-  const start = new Date()
-  start.setMinutes(0, 0, 0)
-
-  return Array.from({ length: 10 }, (_, index) => {
-    const time = new Date(start.getTime() + index * 60 * 60 * 1000)
-    const temperatureSwing = Math.sin((index / 9) * Math.PI) * 3
-    const isRainy = city.mock.weatherCode >= 51
-    return {
-      time: time.toISOString(),
-      temperature: Math.round((city.mock.temperature + temperatureSwing) * 10) / 10,
-      apparentTemperature: Math.round((city.mock.apparentTemperature + temperatureSwing) * 10) / 10,
-      precipitationProbability: isRainy ? Math.max(18, 72 - index * 5) : 8 + ((index * 7) % 18),
-      windSpeed: Math.round((city.mock.windSpeed + Math.sin(index) * 2) * 10) / 10,
-      weatherCode: city.mock.weatherCode,
-    }
-  })
-}
-
-const createMockCity = (city) => {
-  const condition = describeWeatherCode(city.mock.weatherCode)
-  return {
-    ...city,
-    current: {
-      ...city.mock,
-      status: condition.label,
-      icon: condition.icon,
-      sentence: condition.sentence,
-    },
-    hourly: createMockHourly(city),
-    forecast: Array.from({ length: 5 }, (_, index) => ({
-      date: new Date(Date.now() + index * 86400000).toISOString().slice(0, 10),
-      max: city.mock.temperature + Math.round(Math.sin(index) * 2),
-      min: city.mock.temperature - 6 + Math.round(Math.cos(index) * 2),
-      precipitation: city.mock.weatherCode >= 51 ? Math.max(20, 70 - index * 9) : 10 + index * 5,
-      ...describeWeatherCode(index === 2 ? 2 : city.mock.weatherCode),
-    })),
-    sun: { sunrise: '05:48', sunset: '19:28', uvMax: city.mock.weatherCode === 0 ? 7 : 4 },
-    airQuality: {
-      pm10: city.mock.weatherCode === 0 ? 28 : 41,
-      pm25: city.mock.weatherCode === 0 ? 14 : 22,
-      aqi: city.mock.weatherCode === 0 ? 42 : 58,
-      source: 'prepared',
-    },
-    source: 'mock',
-  }
-}
+const createPendingCity = (city) => ({
+  ...city,
+  current: {
+    temperature: null,
+    apparentTemperature: null,
+    humidity: null,
+    windSpeed: null,
+    precipitation: null,
+    weatherCode: 0,
+    status: '확인 중',
+    icon: '',
+    sentence: '실시간 기상청 응답을 기다리고 있어요.',
+  },
+  hourly: [],
+  forecast: [],
+  source: 'pending',
+})
 
 const readStorage = (key, fallback) => {
   const savedValue = window.localStorage.getItem(key)
@@ -211,7 +100,7 @@ const createLocationCity = (latitude, longitude) => {
 
 export const useWeatherStore = defineStore('weather', () => {
   // 여러 View가 함께 사용하는 값은 Pinia가 소유한다.
-  const weatherList = ref(cityCatalog.map(createMockCity))
+  const weatherList = ref(cityCatalog.map(createPendingCity))
   const selectedCityId = ref(weatherList.value[0].id)
   const temperatureUnit = ref('celsius')
   const favoriteCityIds = ref([])
@@ -223,7 +112,7 @@ export const useWeatherStore = defineStore('weather', () => {
   const isHydrated = ref(false)
   const locationStatus = ref('idle')
   const locationMessage = ref('위치 확인 전')
-  const weatherDataSource = ref('mock')
+  const weatherDataSource = ref('pending')
   const currentLocationCity = ref(null)
   let activeLocationRequest = 0
   let activeSelectedWeatherRequest = 0
@@ -237,8 +126,14 @@ export const useWeatherStore = defineStore('weather', () => {
 
   const hydratePreferences = () => {
     if (isHydrated.value) return
+    const savedCityValue = window.localStorage.getItem('skala-weather-selected-city')
     const savedCityId = readStorage('skala-weather-selected-city', weatherList.value[0].id)
-    selectedCityId.value = cityCatalog.some((city) => city.id === savedCityId) ? savedCityId : weatherList.value[0].id
+    const hasSavedCity = savedCityValue !== null && cityCatalog.some((city) => city.id === savedCityId)
+    selectedCityId.value = hasSavedCity ? savedCityId : weatherList.value[0].id
+    if (hasSavedCity) {
+      locationStatus.value = 'selected'
+      locationMessage.value = `선택한 도시 · ${selectedCityInfo.value.name}`
+    }
     const savedUnit = readStorage('skala-weather-unit', 'celsius')
     const savedFavorites = readStorage('skala-weather-favorites', [])
     temperatureUnit.value = ['celsius', 'fahrenheit'].includes(savedUnit) ? savedUnit : 'celsius'
@@ -247,6 +142,7 @@ export const useWeatherStore = defineStore('weather', () => {
   }
 
   const formatTemperature = (celsius) => {
+    if (!Number.isFinite(celsius)) return '--'
     const value = temperatureUnit.value === 'celsius' ? celsius : (celsius * 9) / 5 + 32
     return `${Math.round(value)}${unitLabel.value}`
   }
@@ -256,7 +152,10 @@ export const useWeatherStore = defineStore('weather', () => {
     selectedCityId.value = nextId
     if (nextId !== currentLocationCity.value?.id) {
       const nextCity = weatherList.value.find((city) => city.id === nextId)
-      if (nextCity) locationMessage.value = `선택한 도시 · ${nextCity.name}`
+      if (nextCity) {
+        locationStatus.value = 'selected'
+        locationMessage.value = `선택한 도시 · ${nextCity.name}`
+      }
     }
     // 지도·도시 목록에서 고른 지역 한 곳만 즉시 실시간으로 갱신한다.
     void refreshSelectedCity()
@@ -282,115 +181,64 @@ export const useWeatherStore = defineStore('weather', () => {
       : [...favoriteCityIds.value, cityId]
   }
 
-  const fetchCityWeather = async (city, { includeAirQuality = true } = {}) => {
-    // 필요할 때만 호출하며, 명시적으로 비활성화한 환경에서는 준비된 데이터로 전환한다.
-    if (!OPEN_METEO_ENABLED) return createMockCity(city)
+  const mergeKmaWeather = async (weather) => {
+    const [observationResult, forecastResult] = await Promise.allSettled([
+      fetchKmaCurrentWeather(weather),
+      fetchKmaForecast(weather),
+    ])
 
-    // 가장 중요한 날씨 응답을 부가 정보보다 먼저 기다린다.
-    const forecastData = await fetchForecastData(city)
-    const airQualityResponse = includeAirQuality
-      ? await requestWithRateLimitRetry(() =>
-          axios.get(AIR_QUALITY_API_URL, {
-            params: {
-              latitude: city.latitude,
-              longitude: city.longitude,
-              current: 'pm10,pm2_5,us_aqi',
-              timezone: 'Asia/Seoul',
-              forecast_days: 1,
-            },
-            timeout: 4500,
-          }),
-        ).catch(() => null)
-      : null
+    const observation = observationResult.status === 'fulfilled' ? observationResult.value : null
+    const kmaForecast = forecastResult.status === 'fulfilled' ? forecastResult.value : null
+    if (!observation && !kmaForecast) return weather
 
-    const { current, daily, hourly } = forecastData
-    const condition = describeWeatherCode(current.weather_code)
-    const currentHourIndex = Math.max(
-      0,
-      hourly.time.findIndex((time) => time >= current.time.slice(0, 13) + ':00'),
-    )
-
+    const firstForecast = kmaForecast?.hourly?.[0]
+    const forecastCondition = firstForecast ? describeWeatherCode(firstForecast.weatherCode) : null
+    const currentCondition = observation?.condition ?? forecastCondition
     return {
-      ...city,
+      ...weather,
       current: {
-        temperature: current.temperature_2m,
-        apparentTemperature: current.apparent_temperature,
-        humidity: current.relative_humidity_2m,
-        windSpeed: current.wind_speed_10m,
-        precipitation: current.precipitation,
-        weatherCode: current.weather_code,
-        status: condition.label,
-        icon: condition.icon,
-        sentence: condition.sentence,
+        ...weather.current,
+        temperature: Number.isFinite(observation?.temperature)
+          ? observation.temperature
+          : (firstForecast?.temperature ?? weather.current.temperature),
+        apparentTemperature: Number.isFinite(observation?.apparentTemperature)
+          ? observation.apparentTemperature
+          : (firstForecast?.apparentTemperature ?? weather.current.apparentTemperature),
+        humidity: Number.isFinite(observation?.humidity)
+          ? observation.humidity
+          : (firstForecast?.humidity ?? weather.current.humidity),
+        windSpeed: Number.isFinite(observation?.windSpeed)
+          ? observation.windSpeed
+          : (firstForecast?.windSpeed ?? weather.current.windSpeed),
+        precipitation: observation?.precipitation ?? firstForecast?.precipitation ?? weather.current.precipitation,
+        weatherCode: firstForecast?.weatherCode ?? weather.current.weatherCode,
+        ...(currentCondition
+          ? { status: currentCondition.label ?? currentCondition.status, icon: currentCondition.icon, sentence: currentCondition.sentence }
+          : {}),
       },
-      hourly: hourly.time.slice(currentHourIndex, currentHourIndex + 10).map((time, offset) => {
-        const index = currentHourIndex + offset
-        return {
-          time,
-          temperature: hourly.temperature_2m[index],
-          apparentTemperature: hourly.apparent_temperature[index],
-          precipitationProbability: hourly.precipitation_probability[index],
-          windSpeed: hourly.wind_speed_10m[index],
-          weatherCode: hourly.weather_code[index],
-        }
-      }),
-      forecast: daily.time.map((date, index) => {
-        const dailyCondition = describeWeatherCode(daily.weather_code[index])
-        return {
-          date,
-          max: daily.temperature_2m_max[index],
-          min: daily.temperature_2m_min[index],
-          precipitation: daily.precipitation_probability_max[index],
-          ...dailyCondition,
-        }
-      }),
-      sun: {
-        sunrise: daily.sunrise[0].slice(11, 16),
-        sunset: daily.sunset[0].slice(11, 16),
-        uvMax: daily.uv_index_max[0],
+      hourly: kmaForecast?.hourly?.length ? kmaForecast.hourly : weather.hourly,
+      forecast: kmaForecast?.forecast?.length ? kmaForecast.forecast : weather.forecast,
+      kma: {
+        observedAt: observation?.observedAt,
+        forecastIssuedAt: kmaForecast?.issuedAt,
+        grid: observation?.grid ?? kmaForecast?.grid,
       },
-      airQuality: airQualityResponse
-        ? {
-            pm10: Math.round(airQualityResponse.data.current.pm10),
-            pm25: Math.round(airQualityResponse.data.current.pm2_5),
-            aqi: Math.round(airQualityResponse.data.current.us_aqi),
-            source: 'open-meteo',
-          }
-        : city.airQuality ?? createMockCity(city).airQuality,
-      source: 'open-meteo',
+      source: 'kma',
     }
   }
 
-  const mergeKmaObservation = async (weather) => {
-    try {
-      const observation = await fetchKmaCurrentWeather(weather)
-      const condition = observation.condition
-      return {
-        ...weather,
-        current: {
-          ...weather.current,
-          temperature: Number.isFinite(observation.temperature)
-            ? observation.temperature
-            : weather.current.temperature,
-          apparentTemperature: Number.isFinite(observation.apparentTemperature)
-            ? observation.apparentTemperature
-            : weather.current.apparentTemperature,
-          humidity: Number.isFinite(observation.humidity) ? observation.humidity : weather.current.humidity,
-          windSpeed: Number.isFinite(observation.windSpeed) ? observation.windSpeed : weather.current.windSpeed,
-          precipitation: observation.precipitation,
-          ...(condition
-            ? { status: condition.status, icon: condition.icon, sentence: condition.sentence }
-            : {}),
-        },
-        kma: {
-          observedAt: observation.observedAt,
-          grid: observation.grid,
-        },
-        source: 'kma',
-      }
-    } catch (error) {
-      if (error.message !== 'KMA_SERVICE_KEY_MISSING') console.warn('[KMA API]', error)
-      return weather
+  const fetchPreferredWeather = async (city) => {
+    const existingWeather = weatherList.value.find((item) => item.id === city.id)
+    const baseWeather = existingWeather ? { ...existingWeather, ...city } : createPendingCity(city)
+    const [weather, publicData] = await Promise.all([
+      mergeKmaWeather(baseWeather),
+      fetchPublicDataWeather(city),
+    ])
+    return {
+      ...weather,
+      ...publicData,
+      sun: { ...weather.sun, ...publicData.sun },
+      publicData: { ...weather.publicData, ...publicData.publicData },
     }
   }
 
@@ -400,17 +248,21 @@ export const useWeatherStore = defineStore('weather', () => {
     isLoading.value = true
     errorMessage.value = ''
     try {
-      const weather = await mergeKmaObservation(await fetchCityWeather(city))
+      const weather = await fetchPreferredWeather(city)
       const existingIndex = weatherList.value.findIndex((item) => item.id === city.id)
       if (existingIndex >= 0) weatherList.value.splice(existingIndex, 1, weather)
       else weatherList.value.unshift(weather)
       lastUpdatedAt.value = new Date()
-      if (selectedCityId.value === city.id) weatherDataSource.value = weather.source ?? 'mock'
-    } catch (error) {
-      console.error('[Weather API]', error)
       if (selectedCityId.value === city.id) {
-        weatherDataSource.value = 'mock'
-        errorMessage.value = '실시간 연결에 실패해 준비된 날씨를 표시합니다.'
+        weatherDataSource.value = weather.source ?? 'pending'
+        if (weather.source === 'pending') {
+          errorMessage.value = '기상청 날씨를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
+        }
+      }
+    } catch {
+      if (selectedCityId.value === city.id) {
+        weatherDataSource.value = 'pending'
+        errorMessage.value = '실시간 날씨를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
       }
     } finally {
       if (requestId === activeSelectedWeatherRequest) isLoading.value = false
@@ -427,24 +279,15 @@ export const useWeatherStore = defineStore('weather', () => {
 
     isNationwideLoading.value = true
     try {
-      // 전국 도시 화면을 열었을 때만 작은 묶음으로 순차 요청한다.
+      // 전국 도시 화면을 열었을 때만 기상청 요청을 작은 묶음으로 순차 처리한다.
       for (let index = 0; index < cityCatalog.length; index += NATIONWIDE_BATCH_SIZE) {
         const chunk = cityCatalog.slice(index, index + NATIONWIDE_BATCH_SIZE)
-        const chunkWeather = await Promise.all(
-          chunk.map(async (city) => {
-            try {
-              return await fetchCityWeather(city, { includeAirQuality: false })
-            } catch (error) {
-              console.warn(`[${city.name} Weather]`, error)
-              return createMockCity(city)
-            }
-          }),
-        )
+        const chunkWeather = await Promise.all(chunk.map((city) => fetchPreferredWeather(city)))
 
         chunkWeather.forEach((weather) => {
           const existingIndex = weatherList.value.findIndex((item) => item.id === weather.id)
           const existingWeather = weatherList.value[existingIndex]
-          if (weather.id === selectedCityId.value && existingWeather?.source !== 'mock') return
+          if (weather.id === selectedCityId.value && existingWeather?.source !== 'pending') return
           if (existingIndex >= 0) weatherList.value.splice(existingIndex, 1, weather)
           else weatherList.value.push(weather)
         })
@@ -456,20 +299,33 @@ export const useWeatherStore = defineStore('weather', () => {
     }
   }
 
+  const refreshCities = async (cityIds) => {
+    const uniqueIds = [...new Set(cityIds)]
+    const cities = uniqueIds.map((id) => cityCatalog.find((city) => city.id === id)).filter(Boolean)
+    const results = await Promise.all(cities.map((city) => fetchPreferredWeather(city)))
+    results.forEach((weather) => {
+      const existingIndex = weatherList.value.findIndex((item) => item.id === weather.id)
+      if (existingIndex >= 0) weatherList.value.splice(existingIndex, 1, weather)
+      else weatherList.value.push(weather)
+    })
+    lastUpdatedAt.value = new Date()
+  }
+
   const initializeLocationWeather = async (userInitiated = false) => {
+    // 저장되었거나 방금 고른 도시는 자동 GPS보다 우선한다.
+    // GPS 전환은 사용자가 '위치 다시 찾기'를 눌렀을 때만 수행한다.
+    if (!userInitiated && locationStatus.value === 'selected') return false
     if (locationStatus.value === 'locating') return false
     const requestId = ++activeLocationRequest
     locationStatus.value = 'locating'
     locationMessage.value = '현재 위치 확인 중'
 
     const permissionState = await getGeolocationPermissionState()
-    // 허용 상태만 자동 실행한다. 미결정·차단 상태는 반드시 사용자의 클릭에서 요청한다.
-    if (!userInitiated && permissionState !== 'granted') {
-      // 위치 권한은 선택 사항이다. 권한이 없어도 저장된 선택 도시의 실시간 날씨로 바로 시작한다.
+    // 처음 방문한 prompt/unknown 상태에서는 브라우저의 GPS 권한 창을 띄운다.
+    // 이미 차단한 상태에서만 자동 재요청하지 않고 저장된 선택 도시로 시작한다.
+    if (!userInitiated && permissionState === 'denied') {
       locationStatus.value = 'fallback'
-      locationMessage.value = permissionState === 'denied'
-        ? `GPS 권한 없음 · 선택한 도시 ${selectedCityInfo.value.name}`
-        : `선택한 도시 · ${selectedCityInfo.value.name}`
+      locationMessage.value = `GPS 권한 없음 · 선택한 도시 ${selectedCityInfo.value.name}`
       return false
     }
 
@@ -505,7 +361,6 @@ export const useWeatherStore = defineStore('weather', () => {
       if (requestId !== activeLocationRequest) return
       // 위치 사용을 명시적으로 거부했거나 확인할 수 없을 때만 서울을 기본 위치로 사용한다.
       geolocationError = error
-      console.warn('[Geolocation]', error)
     }
 
     currentLocationCity.value = targetCity
@@ -515,7 +370,7 @@ export const useWeatherStore = defineStore('weather', () => {
 
     // 좌표를 얻는 즉시 화면을 열고, 실시간 값은 바로 이어서 교체한다.
     if (hasGpsPermission) {
-      const provisionalWeather = createMockCity(targetCity)
+      const provisionalWeather = createPendingCity(targetCity)
       weatherList.value = [provisionalWeather, ...weatherList.value.filter((city) => city.id !== targetCity.id)]
       locationStatus.value = 'granted'
       locationMessage.value = `GPS 현재 위치 · ${targetCity.name}`
@@ -527,15 +382,14 @@ export const useWeatherStore = defineStore('weather', () => {
     // 창문을 열기 전에 GPS 위치의 핵심 날씨만 먼저 준비한다.
     let primaryWeather
     try {
-      primaryWeather = await fetchCityWeather(targetCity, { includeAirQuality: false })
-      weatherDataSource.value = primaryWeather.source ?? 'mock'
-    } catch (error) {
-      console.warn('[Primary Location Weather]', error)
-      primaryWeather = createMockCity(targetCity)
-      weatherDataSource.value = 'mock'
+      primaryWeather = await fetchPreferredWeather(targetCity)
+      weatherDataSource.value = primaryWeather.source ?? 'pending'
+    } catch {
+      primaryWeather = createPendingCity(targetCity)
+      weatherDataSource.value = 'pending'
       errorMessage.value = hasGpsPermission
-        ? '현재 위치의 실시간 예보를 불러오지 못해 준비된 날씨를 먼저 표시합니다.'
-        : '실시간 연결에 실패해 서울의 준비된 날씨를 표시합니다.'
+        ? '현재 위치의 기상청 날씨를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
+        : '기상청 연결에 실패했습니다. 잠시 후 다시 시도해주세요.'
     }
 
     if (hasGpsPermission) {
@@ -555,25 +409,6 @@ export const useWeatherStore = defineStore('weather', () => {
     lastUpdatedAt.value = new Date()
     isLoading.value = false
 
-    // 기상청 실황과 대기질은 첫 화면을 막지 않고 뒤에서 보완한다.
-    void (async () => {
-      try {
-        const enrichedWeather = await mergeKmaObservation(await fetchCityWeather(targetCity))
-        if (requestId !== activeLocationRequest) return
-        if (hasGpsPermission) {
-          const currentIndex = weatherList.value.findIndex((city) => city.id === targetCity.id)
-          if (currentIndex >= 0) weatherList.value.splice(currentIndex, 1, enrichedWeather)
-          else weatherList.value.unshift(enrichedWeather)
-        } else {
-          const seoulIndex = weatherList.value.findIndex((city) => city.id === targetCity.id)
-          if (seoulIndex >= 0) weatherList.value.splice(seoulIndex, 1, enrichedWeather)
-        }
-        if (selectedCityId.value === targetCity.id) weatherDataSource.value = enrichedWeather.source ?? 'mock'
-        lastUpdatedAt.value = new Date()
-      } catch (error) {
-        console.warn('[Location Weather Enrichment]', error)
-      }
-    })()
     return true
   }
 
@@ -607,6 +442,7 @@ export const useWeatherStore = defineStore('weather', () => {
     locationStatus,
     currentLocationName,
     refreshWeather,
+    refreshCities,
     restoreCurrentLocation,
     selectCity,
     selectedCityId,
