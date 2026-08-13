@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 
+import koreaProvinceMap from '../assets/map/south-korea-provinces.svg?raw'
 import { useWeatherStore } from '../stores/weatherStore'
 
 const weatherStore = useWeatherStore()
@@ -29,40 +30,64 @@ const favoriteCities = computed(() =>
     .filter(Boolean),
 )
 
-// cityCatalog의 위·경도를 한반도 일러스트에 투영한 뒤 해안선 형태에 맞게 미세 조정한 좌표입니다.
-// x/y는 정사각형 원본 이미지 전체를 기준으로 한 백분율입니다.
-const markerPositions = {
-  seoul: { x: 34.5, y: 39.5 },
-  incheon: { x: 30.5, y: 40.5 },
-  suwon: { x: 35.5, y: 43 },
-  chuncheon: { x: 45.5, y: 36.5 },
-  sejong: { x: 41, y: 50.5 },
-  daejeon: { x: 43, y: 52 },
-  cheongju: { x: 44.5, y: 48.5 },
-  hongseong: { x: 31.5, y: 49.5 },
-  jeonju: { x: 40, y: 57 },
-  gwangju: { x: 36.5, y: 63 },
-  muan: { x: 31, y: 65 },
-  daegu: { x: 63, y: 56 },
-  andong: { x: 64, y: 49.5 },
-  changwon: { x: 66, y: 63 },
-  busan: { x: 71, y: 64 },
-  ulsan: { x: 74, y: 59.5 },
-  jeju: { x: 34.5, y: 91 },
+const provinceMapConfig = {
+  서울특별시: { cityId: 'seoul', label: '서울', x: 32, y: 20.2 },
+  부산광역시: { cityId: 'busan', label: '부산', x: 81.8, y: 62 },
+  대구광역시: { cityId: 'daegu', label: '대구', x: 69.5, y: 50.7 },
+  인천광역시: { cityId: 'incheon', label: '인천', x: 17.5, y: 22 },
+  광주광역시: { cityId: 'gwangju', label: '광주', x: 27.8, y: 62.7 },
+  대전광역시: { cityId: 'daejeon', label: '대전', x: 41.5, y: 43.6 },
+  울산광역시: { cityId: 'ulsan', label: '울산', x: 86, y: 55.8 },
+  세종특별자치시: { cityId: 'sejong', label: '세종', x: 38.2, y: 38.8 },
+  경기도: { cityId: 'suwon', label: '경기', x: 35.5, y: 13.8 },
+  강원도: { cityId: 'chuncheon', label: '강원', x: 63, y: 16.5 },
+  충청북도: { cityId: 'cheongju', label: '충북', x: 52, y: 34.2 },
+  충청남도: { cityId: 'hongseong', label: '충남', x: 28.5, y: 37.8 },
+  전라북도: { cityId: 'jeonju', label: '전북', x: 35.3, y: 52.8 },
+  전라남도: { cityId: 'muan', label: '전남', x: 31, y: 68.2 },
+  경상북도: { cityId: 'andong', label: '경북', x: 73.5, y: 41.5 },
+  경상남도: { cityId: 'changwon', label: '경남', x: 61.8, y: 59.3 },
+  제주특별자치도: { cityId: 'jeju', label: '제주', x: 20.8, y: 95.1 },
 }
 
-const markerStyle = (city) => {
-  const position = markerPositions[city.id] ?? { x: 50, y: 50 }
-  return { left: `${position.x}%`, top: `${position.y}%` }
-}
+const mapRegions = computed(() =>
+  Object.entries(provinceMapConfig)
+    .map(([provinceName, config]) => ({
+      ...config,
+      provinceName,
+      city: weatherList.value.find((city) => city.id === config.cityId),
+    }))
+    .filter((region) => region.city),
+)
+
+const renderedProvinceMap = computed(() =>
+  koreaProvinceMap.replace(/<path\b([^>]*?)\sid="([^"]+)"([^>]*)\/>/g, (path, before, provinceName, after) => {
+    const config = provinceMapConfig[provinceName]
+    if (!config) return path
+    const isActive = selectedCityInfo.value.id === config.cityId
+    return `<path${before} id="${provinceName}"${after} class="province-shape${isActive ? ' is-active' : ''}" data-city-id="${config.cityId}" role="button" tabindex="0" aria-label="${provinceName} 날씨 선택"/>`
+  }),
+)
+
+const regionStyle = (region) => ({ left: `${region.x}%`, top: `${region.y}%` })
 
 const currentLocation = computed(() => weatherList.value.find((city) => city.id === 'current_location'))
 
 const mapZoomStyle = computed(() => {
   if (!zoomedCity.value) return { '--zoom-x': '50%', '--zoom-y': '50%' }
-  const position = markerStyle(zoomedCity.value)
-  return { '--zoom-x': position.left, '--zoom-y': position.top }
+  const region = mapRegions.value.find((item) => item.cityId === zoomedCity.value.id)
+  return region ? { '--zoom-x': `${region.x}%`, '--zoom-y': `${region.y}%` } : { '--zoom-x': '50%', '--zoom-y': '50%' }
 })
+
+const chooseRegion = (cityId) => {
+  const city = weatherList.value.find((item) => item.id === cityId)
+  if (city) chooseCity(city)
+}
+
+const handleProvinceInteraction = (event) => {
+  const cityId = event.target.closest?.('[data-city-id]')?.dataset.cityId
+  if (cityId) chooseRegion(cityId)
+}
 
 const chooseCity = async (city) => {
   if (isZooming.value) return
@@ -178,28 +203,30 @@ onBeforeUnmount(() => window.clearTimeout(zoomTimer))
             <p>LIVE WEATHER MAP</p>
             <h2>대한민국</h2>
           </div>
-          <span><i></i> 점을 눌러 지역 날씨 보기</span>
+          <span><i></i> 지도 또는 지역명을 눌러 날씨 보기</span>
         </div>
 
         <div class="korea-map" :style="mapZoomStyle">
-          <div class="illustrated-korea" aria-hidden="true"></div>
-          <div class="map-glow"></div>
+          <div
+            class="province-map-art"
+            aria-label="대한민국 시도 선택 지도"
+            @click="handleProvinceInteraction"
+            @keydown.enter.space.prevent="handleProvinceInteraction"
+            v-html="renderedProvinceMap"
+          ></div>
           <button
-            v-for="city in weatherList.filter((item) => item.id !== 'current_location')"
-            :key="city.id"
-            class="map-marker"
-            :class="{ active: selectedCityInfo.id === city.id }"
-            :style="markerStyle(city)"
+            v-for="region in mapRegions"
+            :key="region.cityId"
+            class="province-label"
+            :class="{ active: selectedCityInfo.id === region.cityId }"
+            :style="regionStyle(region)"
             type="button"
             :disabled="isZooming"
-            :aria-label="`${city.area} ${city.name} 날씨 선택`"
-            @click="chooseCity(city)"
+            :aria-label="`${region.provinceName} 날씨 선택`"
+            @click="chooseRegion(region.cityId)"
           >
-            <span class="marker-dot"></span>
-            <span class="marker-label">
-              <small>{{ city.area.replace('특별자치도', '').replace('광역시', '').replace('특별시', '') }}</small>
-              <strong>{{ formatTemperature(city.current.temperature) }}</strong>
-            </span>
+            <span>{{ region.label }}</span>
+            <small v-if="selectedCityInfo.id === region.cityId">{{ formatTemperature(region.city.current.temperature) }}</small>
           </button>
         </div>
 
@@ -327,30 +354,27 @@ onBeforeUnmount(() => window.clearTimeout(zoomTimer))
   top: 53%;
   left: 1%;
   width: min(76%, 1050px);
-  aspect-ratio: 1;
+  aspect-ratio: 470 / 759;
   transform: translateY(-50%) scale(1);
   transform-origin: var(--zoom-x) var(--zoom-y);
   transition: transform 1050ms cubic-bezier(.2,.72,.22,1), filter 600ms ease;
   will-change: transform;
 }
-.illustrated-korea { position: absolute; inset: 0; background: url('/korea-illustrated-map.png') center / contain no-repeat; border-radius: 42px; filter: saturate(.92) drop-shadow(0 32px 48px rgb(4 8 27 / 24%)); }
-.map-glow { position: absolute; top: 22%; left: 31%; width: 48%; height: 48%; background: radial-gradient(circle, rgb(255 220 230 / 16%), transparent 72%); filter: blur(15px); }
+.province-map-art { position: absolute; inset: 0; filter: saturate(.92) drop-shadow(0 32px 48px rgb(4 8 27 / 24%)); }
+.province-map-art :deep(svg) { display: block; width: 100%; height: 100%; overflow: visible; }
+.province-map-art :deep(.province-shape) { cursor: pointer; transition: fill 180ms ease, filter 180ms ease, opacity 180ms ease; }
+.province-map-art :deep(.province-shape:hover),
+.province-map-art :deep(.province-shape:focus-visible) { fill: #f6dce8 !important; filter: brightness(1.08); outline: none; }
+.province-map-art :deep(.province-shape.is-active) { fill: #fff0f5 !important; filter: brightness(1.12) drop-shadow(0 0 12px rgb(255 214 229 / 72%)); }
 .map-canvas.is-zooming .korea-map { z-index: 11; transform: translateY(-50%) scale(2.18); filter: saturate(1.04); }
 .map-canvas.is-zooming .map-caption,
 .map-canvas.is-zooming .selected-weather-card,
 .map-canvas.is-zooming .loading-note { opacity: 0; transform: translateY(-8px); pointer-events: none; }
 .map-caption, .selected-weather-card, .loading-note { transition: opacity 300ms ease, transform 300ms ease; }
-.map-marker { position: absolute; z-index: 4; display: flex; padding: 0; align-items: center; gap: 6px; color: #fff; text-align: left; background: transparent; border: 0; cursor: pointer; transform: translate(-50%, -50%); }
-.marker-dot { width: 12px; height: 12px; flex: 0 0 auto; background: #fff3f7; border: 2px solid rgb(68 73 116 / 78%); border-radius: 50%; box-shadow: 0 0 0 5px rgb(255 225 235 / 12%), 0 0 16px rgb(255 225 235 / 78%); }
-.marker-label { display: flex; padding: 8px 11px; flex-direction: column; opacity: 0; background: linear-gradient(120deg, rgb(44 48 86 / 86%), rgb(255 255 255 / 17%)); border: 1px solid rgb(255 235 242 / 22%); border-radius: 12px; box-shadow: 0 10px 22px rgb(1 7 18 / 22%); transform: translateY(4px) scale(.94); backdrop-filter: blur(12px); transition: opacity 160ms ease, transform 160ms ease; pointer-events: none; }
-.marker-label small { color: rgb(255 255 255 / 57%); font-size: 11px; white-space: nowrap; }
-.marker-label strong { font-size: 14px; }
-.map-marker.active { z-index: 8; }
-.map-marker:hover, .map-marker:focus-visible { z-index: 9; }
-.map-marker:hover .marker-label, .map-marker:focus-visible .marker-label, .map-marker.active .marker-label { opacity: 1; transform: translateY(0) scale(1); }
-.map-marker.active .marker-dot { background: #ffe0e8; border-color: #fff; box-shadow: 0 0 0 5px rgb(255 214 225 / 22%), 0 0 20px #ffd0dd; }
-.map-marker.active .marker-label { color: #303754; background: linear-gradient(135deg, #fff9fb, #dfdcff); border-color: rgb(255 255 255 / 76%); transform: scale(1.08); }
-.map-marker.active .marker-label small { color: rgb(20 32 56 / 58%); }
+.province-label { position: absolute; z-index: 4; display: flex; min-width: 32px; min-height: 26px; padding: 3px 6px; align-items: center; justify-content: center; flex-direction: column; color: #404a6a; background: rgb(255 255 255 / 42%); border: 1px solid rgb(255 255 255 / 48%); border-radius: 9px; box-shadow: 0 5px 14px rgb(23 31 63 / 12%); font-size: 12px; font-weight: 750; line-height: 1.05; cursor: pointer; transform: translate(-50%, -50%); backdrop-filter: blur(4px); transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+.province-label small { margin-top: 3px; font-size: 10px; font-weight: 800; }
+.province-label:hover,.province-label:focus-visible { z-index: 8; color: #232d4d; background: rgb(255 250 252 / 90%); outline: none; box-shadow: 0 8px 18px rgb(20 27 59 / 20%); transform: translate(-50%, -50%) scale(1.08); }
+.province-label.active { z-index: 9; min-width: 52px; min-height: 43px; color: #303754; background: linear-gradient(135deg, #fff9fb, #dfdcff); border-color: rgb(255 255 255 / 78%); box-shadow: 0 10px 24px rgb(16 22 54 / 24%), 0 0 18px rgb(255 211 225 / 45%); transform: translate(-50%, -50%) scale(1.05); }
 
 .selected-weather-card { position: absolute; z-index: 9; right: 36px; bottom: 36px; display: grid; width: 360px; padding: 29px; grid-template-columns: 1fr auto; color: #fff; background: linear-gradient(140deg, rgb(10 22 45 / 82%), rgb(255 255 255 / 12%)); border: 1px solid rgb(255 255 255 / 24%); border-radius: 26px; box-shadow: 0 28px 65px rgb(0 7 20 / 34%); backdrop-filter: blur(26px) saturate(130%); }
 .selected-weather-card h3 { margin: 0 0 4px; font-size: 19px; }
@@ -392,8 +416,8 @@ onBeforeUnmount(() => window.clearTimeout(zoomTimer))
   .map-canvas { min-height: 820px; }
   .map-caption { right: 20px; left: 20px; }
   .korea-map { top: 42%; left: -7%; width: 114%; height: auto; }
-  .marker-label { padding: 4px 5px; }
-  .marker-label small { display: none; }
+  .province-label { min-width: 27px; min-height: 22px; padding: 2px 4px; border-radius: 7px; font-size: 10px; }
+  .province-label.active { min-width: 44px; min-height: 36px; }
   .selected-weather-card { top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; }
 }
 
@@ -428,21 +452,17 @@ onBeforeUnmount(() => window.clearTimeout(zoomTimer))
 .korea-map {
   top: 50%;
   left: 50%;
-  width: min(calc(100vw - 470px), calc(100vh - 140px), 980px);
+  width: auto;
+  height: min(calc(100vh - 180px), 680px);
   max-width: none;
   transform: translate(-50%, -50%) scale(1);
-}
-.illustrated-korea {
-  border-radius: 0;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
 }
 .map-canvas.is-zooming .korea-map { transform: translate(-50%, -50%) scale(2.18); }
 .map-caption { top: 40px; right: 48px; left: 410px; }
 .selected-weather-card { padding: 28px; border-radius: var(--radius-md); }
 .selected-weather-card a { min-height: 46px; height: auto; }
-@media (max-width: 1100px) { .map-layout { display: grid; min-height: 0; grid-template-columns: 1fr; gap: var(--card-gap); }.region-panel { position: relative; top: auto; left: auto; width: auto; max-height: 620px; }.map-canvas { min-height: 820px; }.korea-map { width: min(90vw, calc(100vh - 160px), 820px); }.map-caption { left: 48px; } }
+@media (max-width: 1100px) { .map-layout { display: grid; min-height: 0; grid-template-columns: 1fr; gap: var(--card-gap); }.region-panel { position: relative; top: auto; left: auto; width: auto; max-height: 620px; }.map-canvas { min-height: 820px; }.korea-map { height: min(640px, calc(100vh - 190px)); }.map-caption { left: 48px; } }
 @media (max-width: 620px) { .map-page { padding: 9px var(--layout-gutter) 28px; }.map-header { min-height: 64px; border-radius: var(--radius-md); }.region-panel,.map-canvas { border-radius: var(--radius-lg); }.map-caption { right: 20px; left: 20px; } }
-@media (max-width: 760px) { .region-list { grid-template-columns: 1fr; }.map-canvas { min-height: 800px; }.map-caption > span { display: none; }.selected-weather-card { right: 12px; bottom: 12px; left: 12px; width: auto; }.selected-weather-card dl { gap: 8px; }.korea-map { left: 50%; width: 124%; } }
+@media (max-width: 760px) { .region-list { grid-template-columns: 1fr; }.map-canvas { min-height: 800px; }.map-caption > span { display: none; }.selected-weather-card { right: 12px; bottom: 12px; left: 12px; width: auto; }.selected-weather-card dl { gap: 8px; }.korea-map { top: 43%; left: 50%; width: auto; height: min(520px, 105vw); } }
 @media (max-width: 760px) { .map-page { padding-top: 0; } }
 </style>
