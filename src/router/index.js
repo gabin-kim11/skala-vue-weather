@@ -2,6 +2,26 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import WeatherHomeView from '../views/WeatherHomeView.vue'
 
+const supportedCityIds = [
+  'seoul',
+  'busan',
+  'daegu',
+  'incheon',
+  'gwangju',
+  'daejeon',
+  'ulsan',
+  'sejong',
+  'suwon',
+  'chuncheon',
+  'cheongju',
+  'hongseong',
+  'jeonju',
+  'muan',
+  'andong',
+  'changwon',
+  'jeju',
+].join('|')
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -31,13 +51,14 @@ const router = createRouter({
       component: () => import('../views/WeatherAboutView.vue'),
     },
     {
-      path: '/weather/:cityId',
+      path: `/weather/:cityId(${supportedCityIds})`,
       name: 'weather-detail',
       component: () => import('../views/WeatherDetailView.vue'),
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/',
+      name: 'not-found',
+      component: () => import('../views/NotFoundView.vue'),
     },
   ],
   scrollBehavior(to, from, savedPosition) {
